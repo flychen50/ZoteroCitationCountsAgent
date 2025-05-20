@@ -65,10 +65,8 @@ describe('ZoteroCitationCounts', function() {
       
       const id = '10.1000/xyz123';
       const type = 'doi';
-      // Note: _nasaadsUrl uses this.getPref internally. We must ensure this.getPref uses the stubbed Zotero.Prefs.get.
-      // The ZoteroCitationCounts object is directly available in the global scope after the new Function execution.
       const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
-      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count&api_key=TEST_API_KEY`;
+      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count`;
       expect(actualUrl).to.equal(expectedUrl);
     });
 
@@ -78,7 +76,7 @@ describe('ZoteroCitationCounts', function() {
       const id = '2303.12345';
       const type = 'arxiv';
       const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
-      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=arxiv:${id}&fl=citation_count&api_key=TEST_API_KEY_ARXIV`;
+      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=arxiv:${id}&fl=citation_count`;
       expect(actualUrl).to.equal(expectedUrl);
     });
 
@@ -88,7 +86,7 @@ describe('ZoteroCitationCounts', function() {
       const id = '10.1000/abc789';
       const type = 'doi';
       const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
-      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count&api_key=`;
+      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count`;
       expect(actualUrl).to.equal(expectedUrl);
     });
   });
@@ -268,10 +266,53 @@ describe('ZoteroCitationCounts', function() {
         await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
       } catch (e) {
         actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
-      expect(global.Zotero.debug.calledWith(sinon.match(/Error processing API response/))).to.be.true;
-    });
-  });
-});
+            }
+            expect(actualError).to.be.an('Error');
+            expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
+            expect(global.Zotero.debug.calledWith(sinon.match(/Error processing API response/))).to.be.true;
+          });
+
+          it('should send Authorization header for NASA ADS requests', async function() {
+            // Arrange
+            global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('MY_NASA_KEY');
+            const nasaUrl = 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1000/xyz123&fl=citation_count';
+            const mockResponseData = { response: { docs: [{ citation_count: 42 }] } };
+            global.fetch.resolves({
+        ok: true,
+        status: 200,
+        json: sinon.stub().resolves(mockResponseData)
+            });
+            const callback = sinon.stub().returns(42);
+
+            // Act
+            await global.ZoteroCitationCounts._sendRequest(nasaUrl, callback);
+
+            // Assert
+            expect(global.fetch.calledOnce).to.be.true;
+            const fetchArgs = global.fetch.getCall(0).args;
+            expect(fetchArgs[0]).to.equal(nasaUrl);
+            expect(fetchArgs[1]).to.have.property('headers');
+            expect(fetchArgs[1].headers).to.have.property('Authorization', 'Bearer MY_NASA_KEY');
+          });
+
+          it('should not send Authorization header for non-NASA ADS requests', async function() {
+            const url = 'https://api.crossref.org/works/10.1000/xyz123';
+            const mockResponseData = { "is-referenced-by-count": 5 };
+            global.fetch.resolves({
+        ok: true,
+        status: 200,
+        json: sinon.stub().resolves(mockResponseData)
+            });
+            const callback = sinon.stub().returns(5);
+
+            await global.ZoteroCitationCounts._sendRequest(url, callback);
+
+            expect(global.fetch.calledOnce).to.be.true;
+            const fetchArgs = global.fetch.getCall(0).args;
+            expect(fetchArgs[0]).to.equal(url);
+            expect(fetchArgs[1]).to.have.property('headers');
+            expect(fetchArgs[1].headers).to.deep.equal({});
+          });
+
+        });
+      });
