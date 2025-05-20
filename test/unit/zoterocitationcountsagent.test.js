@@ -305,7 +305,7 @@ describe('ZoteroCitationCountsAgent', function() {
             });
             const callback = sinon.stub().returns(5);
 
-            await global.ZoteroCitationCounts._sendRequest(url, callback);
+            await global.ZoteroCitationCountsAgent._sendRequest(url, callback);
 
             expect(global.fetch.calledOnce).to.be.true;
             const fetchArgs = global.fetch.getCall(0).args;
