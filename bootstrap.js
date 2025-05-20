@@ -1,41 +1,41 @@
-let ZoteroCitationCounts, itemObserver;
+let ZoteroCitationCountsAgent, itemObserver;
 
 async function startup({ id, version, rootURI }) {
-  Services.scriptloader.loadSubScript(rootURI + "src/zoterocitationcounts.js");
+  Services.scriptloader.loadSubScript(rootURI + "src/zoterocitationcountsagent.js");
 
-  ZoteroCitationCounts.init({ id, version, rootURI });
-  ZoteroCitationCounts.addToAllWindows();
+  ZoteroCitationCountsAgent.init({ id, version, rootURI });
+  ZoteroCitationCountsAgent.addToAllWindows();
 
   Zotero.PreferencePanes.register({
     pluginID: id,
-    label: await ZoteroCitationCounts.l10n.formatValue(
-      "citationcounts-preference-pane-label"
+    label: await ZoteroCitationCountsAgent.l10n.formatValue(
+      "zoterocitationcountsagent-preference-pane-label"
     ),
-    image: ZoteroCitationCounts.icon("edit-list-order", false),
+    image: ZoteroCitationCountsAgent.icon("edit-list-order", false),
     src: "preferences.xhtml",
     scripts: ["src/preferences.js"],
   });
 
   await Zotero.ItemTreeManager.registerColumns({
-    dataKey: "citationcounts",
-    label: await ZoteroCitationCounts.l10n.formatValue(
-      "citationcounts-column-title"
+    dataKey: "zoterocitationcountsagent",
+    label: await ZoteroCitationCountsAgent.l10n.formatValue(
+      "zoterocitationcountsagent-column-title"
     ),
     pluginID: id,
-    dataProvider: (item) => ZoteroCitationCounts.getCitationCount(item),
+    dataProvider: (item) => ZoteroCitationCountsAgent.getCitationCount(item),
   });
 
   itemObserver = Zotero.Notifier.registerObserver(
     {
       notify: function (event, type, ids, extraData) {
         if (event == "add") {
-          const pref = ZoteroCitationCounts.getPref("autoretrieve");
+          const pref = ZoteroCitationCountsAgent.getPref("autoretrieve");
           if (pref === "none") return;
 
-          const api = ZoteroCitationCounts.APIs.find((api) => api.key === pref);
+          const api = ZoteroCitationCountsAgent.APIs.find((api) => api.key === pref);
           if (!api) return;
 
-          ZoteroCitationCounts.updateItems(Zotero.Items.get(ids), api);
+          ZoteroCitationCountsAgent.updateItems(Zotero.Items.get(ids), api);
         }
       },
     },
@@ -44,15 +44,15 @@ async function startup({ id, version, rootURI }) {
 }
 
 function onMainWindowLoad({ window }) {
-  ZoteroCitationCounts.addToWindow(window);
+  ZoteroCitationCountsAgent.addToWindow(window);
 }
 
 function onMainWindowUnload({ window }) {
-  ZoteroCitationCounts.removeFromWindow(window);
+  ZoteroCitationCountsAgent.removeFromWindow(window);
 }
 
 function shutdown() {
-  ZoteroCitationCounts.removeFromAllWindows();
+  ZoteroCitationCountsAgent.removeFromAllWindows();
   Zotero.Notifier.unregisterObserver(itemObserver);
-  ZoteroCitationCounts = undefined;
+  ZoteroCitationCountsAgent = undefined;
 }

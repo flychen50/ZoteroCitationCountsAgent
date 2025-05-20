@@ -1,4 +1,4 @@
-# Zotero 7 Citation Counts Manager Enhaned
+# ZoteroCitationCountsAgent
 
 - [GitHub](https://github.com/FrLars21/ZoteroCitationCountsManager): Source
   code repository
@@ -24,7 +24,7 @@ Please report any bugs, questions, or feature requests in the Github repository.
 
 本插件已重构目录结构以提升可维护性和可读性：
 
-- `src/` 目录：存放主要 JS 源码文件（`zoterocitationcounts.js`, `preferences.js`, `prefs.js`）。
+- `src/` 目录：存放主要 JS 源码文件（`zoterocitationcountsagent.js`, `preferences.js`, `prefs.js`）。
 - 根目录：保留 `manifest.json`, `bootstrap.js`, `preferences.xhtml`, `README.md`, `LICENSE` 等配置和文档文件。
 - `locale/`、`bin/` 目录结构保持不变。
 
@@ -32,7 +32,7 @@ Please report any bugs, questions, or feature requests in the Github repository.
 
 ## Acknowledgements
 
-This plugin is a refactored and enhanced version of Erik Schnetter's [Zotero Citations Counts Manager](https://github.com/eschnett/zotero-citationcounts) for Zotero 7. Code for that extension was based on [Zotero DOI Manager](https://github.com/bwiernik/zotero-shortdoi), which is based in part on [Zotero Google Scholar Citations](https://github.com/beloglazov/zotero-scholar-citations) by Anton Beloglazov.
+This plugin (ZoteroCitationCountsAgent) is a refactored and enhanced version of Erik Schnetter's original [Zotero Citations Counts Manager](https://github.com/eschnett/zotero-citationcounts) for Zotero 7. Code for that extension was based on [Zotero DOI Manager](https://github.com/bwiernik/zotero-shortdoi), which is based in part on [Zotero Google Scholar Citations](https://github.com/beloglazov/zotero-scholar-citations) by Anton Beloglazov.
 Boilerplate for this plugin was based on Zotero's sample plugin for v7 [Make-It-Red](https://github.com/zotero/make-it-red).
 
 ## Installing
@@ -42,7 +42,7 @@ Boilerplate for this plugin was based on Zotero's sample plugin for v7 [Make-It-
 - Run Zotero (version 7.x)
 - Go to `Tools -> Add-ons`
 - `Install Add-on From File`
-- Choose the file `zoterocitationcountsmanager-2.0.0.xpi`
+- Choose the file `zoterocitationcountsagent-2.0.0.xpi`
 - Restart Zotero
 
 ## Setting NASA ADS API Key
@@ -50,7 +50,7 @@ Boilerplate for this plugin was based on Zotero's sample plugin for v7 [Make-It-
 To use the NASA ADS API, you need to set your API key. Follow these steps:
 
 1. Obtain your API key from [NASA ADS](https://ui.adsabs.harvard.edu/user/settings/token).
-2. In Zotero, go to `Tools -> Add-ons -> Citation Counts -> Preferences`.
+2. In Zotero, go to `Tools -> Add-ons -> ZoteroCitationCountsAgent -> Preferences`.
 3. Enter your NASA ADS API key in the provided field.
 
 ## Using the Build and Release Process

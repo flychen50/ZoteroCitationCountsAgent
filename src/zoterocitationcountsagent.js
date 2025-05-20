@@ -1,4 +1,4 @@
-ZoteroCitationCounts = {
+ZoteroCitationCountsAgent = {
   _initialized: false,
 
   pluginID: null,
@@ -14,7 +14,7 @@ ZoteroCitationCounts = {
   _addedElementIDs: [],
 
   _log(msg) {
-    Zotero.debug("Zotero Citation Counts: " + msg);
+    Zotero.debug("ZoteroCitationCountsAgent: " + msg);
   },
 
   init: function ({ id, version, rootURI }) {
@@ -24,14 +24,14 @@ ZoteroCitationCounts = {
     this.pluginVersion = version;
     this.rootURI = rootURI;
 
-    this.l10n = new Localization(["citation-counts.ftl"]);
+    this.l10n = new Localization(["zoterocitationcountsagent.ftl"]);
 
     /**
      * To add a new API:
      * -----------------
-     * (1) Create a urlBuilder method on the ZoteroCitationCounts object. Args: urlencoded *id* and *idtype* ("doi" or "arxiv"). Return: URL for API request.
+     * (1) Create a urlBuilder method on the ZoteroCitationCountsAgent object. Args: urlencoded *id* and *idtype* ("doi" or "arxiv"). Return: URL for API request.
      *
-     * (2) Create a responseCallback method on the ZoteroCitationCounts object. Args: *response* from api call. Return: citation count number.
+     * (2) Create a responseCallback method on the ZoteroCitationCountsAgent object. Args: *response* from api call. Return: citation count number.
      *
      * (3) Register the API here, and specify whether it works with doi, arxiv id or both.
      *
@@ -92,11 +92,11 @@ ZoteroCitationCounts = {
   },
 
   getPref: function (pref) {
-    return Zotero.Prefs.get("extensions.citationcounts." + pref, true);
+    return Zotero.Prefs.get("extensions.zoterocitationcountsagent." + pref, true);
   },
 
   setPref: function (pref, value) {
-    return Zotero.Prefs.set("extensions.citationcounts." + pref, value, true);
+    return Zotero.Prefs.set("extensions.zoterocitationcountsagent." + pref, value, true);
   },
 
   icon: function (iconName, hiDPI) {
@@ -257,7 +257,7 @@ ZoteroCitationCounts = {
    * Inject plugin specific DOM elements in a DOM window.
    */
   addToWindow: function (window) {
-    window.MozXULElement.insertFTLIfNeeded("citation-counts.ftl");
+    window.MozXULElement.insertFTLIfNeeded("zoterocitationcountsagent.ftl");
 
     this._createToolsMenu(window.document);
     this._createItemMenu(window.document);
@@ -285,7 +285,7 @@ ZoteroCitationCounts = {
       document.getElementById(id)?.remove();
     }
 
-    document.querySelector('[href="citation-counts.ftl"]').remove();
+    document.querySelector('[href="zoterocitationcountsagent.ftl"]').remove();
   },
 
   /**

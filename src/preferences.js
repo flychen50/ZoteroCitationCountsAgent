@@ -1,6 +1,6 @@
-ZoteroCitationCounts_Prefs = {
+ZoteroCitationCountsAgent_Prefs = {
   /**
-   * @TODO reference ZoteroCitationCounts.APIs directly.
+   * @TODO reference ZoteroCitationCountsAgent.APIs directly.
    */
   APIs: [
     {
@@ -27,29 +27,29 @@ ZoteroCitationCounts_Prefs = {
         api.key === "none"
           ? {
               "data-l10n-id":
-                "citationcounts-preferences-pane-autoretrieve-api-none",
+                "zoterocitationcountsagent-preferences-pane-autoretrieve-api-none",
             }
           : {
               "data-l10n-id":
-                "citationcounts-preferences-pane-autoretrieve-api",
+                "zoterocitationcountsagent-preferences-pane-autoretrieve-api",
               "data-l10n-args": `{"api": "${api.name}"}`,
             };
 
       this._injectXULElement(
         document,
         "radio",
-        `citationcounts-preferences-pane-autoretrieve-radio-${api.key}`,
+        `zoterocitationcountsagent-preferences-pane-autoretrieve-radio-${api.key}`,
         {
           ...label,
           value: api.key,
         },
-        "citationcounts-preference-pane-autoretrieve-radiogroup"
+        "zoterocitationcountsagent-preference-pane-autoretrieve-radiogroup"
       );
     });
   },
 
   /**
-   * @TODO reference ZoteroCitationCounts._injectXULElement directly.
+   * @TODO reference ZoteroCitationCountsAgent._injectXULElement directly.
    */
   _injectXULElement: function (
     document,

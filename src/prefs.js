@@ -1,2 +1,2 @@
-pref("extensions.citationcounts.autoretrieve", "none");
-pref("extensions.citationcounts.nasaadsApiKey", "");
+pref("extensions.zoterocitationcountsagent.autoretrieve", "none");
+pref("extensions.zoterocitationcountsagent.nasaadsApiKey", "");

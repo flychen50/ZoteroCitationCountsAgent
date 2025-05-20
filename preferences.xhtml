@@ -1,17 +1,17 @@
 <linkset>
-  <html:link rel="localization" href="citation-counts.ftl" />
+  <html:link rel="localization" href="zoterocitationcountsagent.ftl" />
 </linkset>
 
-<vbox onload="ZoteroCitationCounts_Prefs.init()">
+<vbox onload="ZoteroCitationCountsAgent_Prefs.init()">
   <groupbox>
     <label
       ><html:h2
-        data-l10n-id="citationcounts-preferences-pane-autoretrieve-title"
+        data-l10n-id="zoterocitationcountsagent-preferences-pane-autoretrieve-title"
       ></html:h2
     ></label>
     <radiogroup
-      id="citationcounts-preference-pane-autoretrieve-radiogroup"
-      preference="extensions.citationcounts.autoretrieve"
+      id="zoterocitationcountsagent-preference-pane-autoretrieve-radiogroup"
+      preference="extensions.zoterocitationcountsagent.autoretrieve"
     >
       <!-- Radiobuttons are dynamically created by the script -->
     </radiogroup>
@@ -19,13 +19,13 @@
   <groupbox>
     <label
       ><html:h2
-        data-l10n-id="citationcounts-preferences-pane-nasaads-api-key-label"
+        data-l10n-id="zoterocitationcountsagent-preferences-pane-nasaads-api-key-label"
       ></html:h2
     ></label>
     <html:input
-      id="citationcounts-preference-pane-nasaads-api-key"
+      id="zoterocitationcountsagent-preference-pane-nasaads-api-key"
       type="text"
-      preference="extensions.citationcounts.nasaadsApiKey"
+      preference="extensions.zoterocitationcountsagent.nasaadsApiKey"
     />
   </groupbox>
 </vbox>
