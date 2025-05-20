@@ -60,42 +60,39 @@ describe('ZoteroCitationCounts', function() {
   });
 
   describe('_nasaadsUrl', function() {
-    it('should construct the correct URL with API key for DOI', function() {
-      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_API_KEY');
-      
+    it('should construct the correct URL for DOI, without API key', function() {
       const id = '10.1000/xyz123';
       const type = 'doi';
-      // Note: _nasaadsUrl uses this.getPref internally. We must ensure this.getPref uses the stubbed Zotero.Prefs.get.
-      // The ZoteroCitationCounts object is directly available in the global scope after the new Function execution.
       const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
-      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count&api_key=TEST_API_KEY`;
+      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count`;
       expect(actualUrl).to.equal(expectedUrl);
+      // Ensure Prefs.get is not called for nasaadsApiKey within this function
+      expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
     });
 
-    it('should construct the correct URL with API key for arXiv', function() {
-      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_API_KEY_ARXIV');
-      
+    it('should construct the correct URL for arXiv, without API key', function() {
       const id = '2303.12345';
       const type = 'arxiv';
       const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
-      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=arxiv:${id}&fl=citation_count&api_key=TEST_API_KEY_ARXIV`;
+      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=arxiv:${id}&fl=citation_count`;
       expect(actualUrl).to.equal(expectedUrl);
+      expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
     });
 
-    it('should use an empty string if API key is not set', function() {
-      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('');
-      
+    // This test might be redundant now as _nasaadsUrl no longer handles the API key, 
+    // but it's harmless to keep to ensure the base URL construction is fine.
+    it('should construct the base URL correctly even if API key pref might be set elsewhere', function() {
       const id = '10.1000/abc789';
       const type = 'doi';
       const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
-      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count&api_key=`;
+      const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count`;
       expect(actualUrl).to.equal(expectedUrl);
+      expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
     });
   });
   
   describe('getPref', function() {
     it('should call Zotero.Prefs.get with the correct preference key', function() {
-      // The ZoteroCitationCounts object is globally available.
       global.ZoteroCitationCounts.getPref('myTestPref');
       expect(global.Zotero.Prefs.get.calledOnceWith('extensions.citationcounts.myTestPref', true)).to.be.true;
     });
@@ -108,170 +105,211 @@ describe('ZoteroCitationCounts', function() {
   });
 
   describe('_sendRequest', function() {
-    const nasaAdsUrl = 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:anything&api_key=SOMEKEY';
+    // Adjusted nasaAdsUrl to reflect it no longer contains api_key from _nasaadsUrl function
+    const baseNasaAdsUrl = 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:anything&fl=citation_count';
     const otherApiUrl = 'https://api.anotherexample.com/data';
     let mockCallback;
+    const testApiKey = 'NASA_ADS_TEST_KEY_FROM_PREFS';
 
     beforeEach(function() {
       mockCallback = sinon.stub();
-    });
-
-    it('should throw nasaads-apikey error for NASA ADS 401 response', async function() {
-      global.fetch.resolves({
-        ok: false,
-        status: 401,
-        url: nasaAdsUrl 
-      });
-
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(nasaAdsUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-nasaads-apikey');
-      expect(global.Zotero.debug.calledWith(sinon.match(/NASA ADS API key error/))).to.be.true;
-    });
-
-    it('should throw nasaads-apikey error for NASA ADS 403 response', async function() {
-      global.fetch.resolves({
-        ok: false,
-        status: 403,
-        url: nasaAdsUrl
-      });
-
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(nasaAdsUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-nasaads-apikey');
-      expect(global.Zotero.debug.calledWith(sinon.match(/NASA ADS API key error/))).to.be.true;
-    });
-
-    it('should throw bad-api-response error for other NASA ADS errors (e.g., 500)', async function() {
-      global.fetch.resolves({
-        ok: false,
-        status: 500,
-        url: nasaAdsUrl
-      });
-
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(nasaAdsUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-bad-api-response');
-      expect(global.Zotero.debug.calledWith(sinon.match(/Bad API response for/))).to.be.true;
-    });
-
-    it('should throw bad-api-response error for non-NASA ADS API errors (e.g., 404)', async function() {
-      global.fetch.resolves({
-        ok: false,
-        status: 404,
-        url: otherApiUrl
-      });
-
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-bad-api-response');
-      expect(global.Zotero.debug.calledWith(sinon.match(/Bad API response for/))).to.be.true;
-    });
-
-    it('should throw bad-api-response error for network failures', async function() {
-      global.fetch.rejects(new Error('Network failure'));
-
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-bad-api-response');
-      expect(global.Zotero.debug.calledWith(sinon.match(/Network error fetching/))).to.be.true;
-    });
-
-    it('should return count for successful response and valid count', async function() {
-      const mockResponseData = { some_count_field: 123 };
-      global.fetch.resolves({
-        ok: true,
-        status: 200,
-        json: sinon.stub().resolves(mockResponseData)
-      });
-      mockCallback.returns(mockResponseData.some_count_field);
-
-      const count = await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
-      expect(count).to.equal(123);
-      expect(mockCallback.calledWith(mockResponseData)).to.be.true;
-    });
-
-    it('should throw no-citation-count error for successful response but invalid count (string)', async function() {
-      const mockResponseData = { some_count_field: "not-a-number" };
-      global.fetch.resolves({
-        ok: true,
-        status: 200,
-        json: sinon.stub().resolves(mockResponseData)
-      });
-      mockCallback.returns(mockResponseData.some_count_field);
-
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
-      expect(global.Zotero.debug.calledWith(sinon.match(/Error processing API response/))).to.be.true;
+      // Reset the Prefs.get stub for each test to ensure clean state for nasaadsApiKey checks
+      global.Zotero.Prefs.get.reset();
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns(testApiKey);
+      // Make sure other pref calls are still possible if needed by other parts of the code.
+      global.Zotero.Prefs.get.callThrough(); 
     });
     
-    it('should throw no-citation-count error for successful response but invalid count (negative)', async function() {
-      const mockResponseData = { some_count_field: -5 };
-      global.fetch.resolves({
-        ok: true,
-        status: 200,
-        json: sinon.stub().resolves(mockResponseData)
-      });
-      mockCallback.returns(mockResponseData.some_count_field);
+    describe('NASA ADS Calls', function() {
+      it('should use Authorization header and no api_key in URL for successful response', async function() {
+        global.fetch.resolves({
+          ok: true,
+          status: 200,
+          json: async () => ({ response: { docs: [{ citation_count: 123 }] } }) // Example NASA ADS response structure
+        });
+        mockCallback.callsFake(response => response.response.docs[0].citation_count); // Simulate callback logic
 
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
+        await global.ZoteroCitationCounts._sendRequest(baseNasaAdsUrl, mockCallback);
+
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.true;
+        expect(global.fetch.calledOnce).to.be.true;
+        const fetchCall = global.fetch.getCall(0);
+        expect(fetchCall.args[0]).to.equal(baseNasaAdsUrl); // URL should not have api_key
+        expect(fetchCall.args[1]).to.deep.include({
+          headers: {
+            'Authorization': 'Bearer ' + testApiKey
+          }
+        });
+        expect(mockCallback.calledOnce).to.be.true;
+      });
+
+      it('should throw nasaads-apikey error for 401 response, using Authorization header', async function() {
+        global.fetch.resolves({
+          ok: false,
+          status: 401,
+          url: baseNasaAdsUrl // url property on response is not strictly used by the code but good for mock completeness
+        });
+        
+        let actualError = null;
+        try {
+          await global.ZoteroCitationCounts._sendRequest(baseNasaAdsUrl, mockCallback);
+        } catch (e) {
+          actualError = e;
+        }
+        expect(actualError).to.be.an('Error');
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-nasaads-apikey');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.true;
+        const fetchCall = global.fetch.getCall(0);
+        expect(fetchCall.args[0]).to.equal(baseNasaAdsUrl);
+        expect(fetchCall.args[1]).to.deep.include({ headers: { 'Authorization': 'Bearer ' + testApiKey } });
+        expect(global.Zotero.debug.calledWith(sinon.match(/NASA ADS API key error/))).to.be.true;
+        expect(global.Zotero.debug.calledWith(sinon.match(/Used token: Bearer NASA_ADS_.../))).to.be.true;
+      });
+
+      it('should throw nasaads-apikey error for 403 response, using Authorization header', async function() {
+        global.fetch.resolves({
+          ok: false,
+          status: 403,
+          url: baseNasaAdsUrl
+        });
+
+        let actualError = null;
+        try {
+          await global.ZoteroCitationCounts._sendRequest(baseNasaAdsUrl, mockCallback);
+        } catch (e) {
+          actualError = e;
+        }
+        expect(actualError).to.be.an('Error');
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-nasaads-apikey');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.true;
+        const fetchCall = global.fetch.getCall(0);
+        expect(fetchCall.args[0]).to.equal(baseNasaAdsUrl);
+        expect(fetchCall.args[1]).to.deep.include({ headers: { 'Authorization': 'Bearer ' + testApiKey } });
+        expect(global.Zotero.debug.calledWith(sinon.match(/NASA ADS API key error/))).to.be.true;
+        expect(global.Zotero.debug.calledWith(sinon.match(/Used token: Bearer NASA_ADS_.../))).to.be.true;
+      });
+      
+      it('should handle NASA ADS URL that might accidentally have api_key and still use Authorization header', async function() {
+        const urlWithApiKey = baseNasaAdsUrl + '&api_key=OLD_KEY_IN_URL';
+        global.fetch.resolves({
+            ok: true, status: 200, json: async () => ({ response: { docs: [{ citation_count: 50 }] } })
+        });
+        mockCallback.callsFake(response => response.response.docs[0].citation_count);
+
+        await global.ZoteroCitationCounts._sendRequest(urlWithApiKey, mockCallback);
+
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.true;
+        const fetchCall = global.fetch.getCall(0);
+        // The URL passed to fetch should have api_key removed
+        expect(fetchCall.args[0]).to.equal(baseNasaAdsUrl); 
+        expect(fetchCall.args[1]).to.deep.include({ headers: { 'Authorization': 'Bearer ' + testApiKey } });
+      });
+
+      it('should throw bad-api-response error for other NASA ADS errors (e.g., 500), using Authorization header', async function() {
+        global.fetch.resolves({
+          ok: false,
+          status: 500,
+          url: baseNasaAdsUrl
+        });
+
+        let actualError = null;
+        try {
+          await global.ZoteroCitationCounts._sendRequest(baseNasaAdsUrl, mockCallback);
+        } catch (e) {
+          actualError = e;
+        }
+        expect(actualError).to.be.an('Error');
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-bad-api-response');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.true;
+        const fetchCall = global.fetch.getCall(0);
+        expect(fetchCall.args[0]).to.equal(baseNasaAdsUrl);
+        expect(fetchCall.args[1]).to.deep.include({ headers: { 'Authorization': 'Bearer ' + testApiKey } });
+        expect(global.Zotero.debug.calledWith(sinon.match(/Bad API response for/))).to.be.true;
+      });
     });
 
-
-    it('should throw no-citation-count error for successful response but malformed JSON', async function() {
-      global.fetch.resolves({
-        ok: true,
-        status: 200,
-        json: sinon.stub().rejects(new Error('JSON.parse: unexpected character at line 1 column 1 of the JSON data'))
+    describe('Non-NASA ADS Calls', function() {
+      beforeEach(function() {
+        // Crucial: ensure nasaadsApiKey pref is NOT called for these tests.
+        // Reset the specific stub for nasaadsApiKey and ensure other calls pass through
+        global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).reset();
       });
 
-      let actualError = null;
-      try {
-        await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
-      } catch (e) {
-        actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
-      expect(global.Zotero.debug.calledWith(sinon.match(/Error processing API response/))).to.be.true;
+      it('should throw bad-api-response error for non-NASA ADS API errors (e.g., 404) and not use Authorization header', async function() {
+        global.fetch.resolves({
+          ok: false,
+          status: 404,
+          url: otherApiUrl
+        });
+
+        let actualError = null;
+        try {
+          await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
+        } catch (e) {
+          actualError = e;
+        }
+        expect(actualError).to.be.an('Error');
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-bad-api-response');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
+        const fetchCall = global.fetch.getCall(0);
+        expect(fetchCall.args[1]).to.not.have.property('headers'); // Or check headers is empty or doesn't have Authorization
+        expect(global.Zotero.debug.calledWith(sinon.match(/Bad API response for/))).to.be.true;
+      });
+
+      it('should throw bad-api-response error for network failures (non-NASA ADS) and not use Authorization header', async function() {
+        global.fetch.rejects(new Error('Network failure'));
+
+        let actualError = null;
+        try {
+          await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
+        } catch (e) {
+          actualError = e;
+        }
+        expect(actualError).to.be.an('Error');
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-bad-api-response');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
+        const fetchCall = global.fetch.getCall(0); // fetch is still called once, but it rejects
+        expect(fetchCall.args[1]).to.not.have.property('headers');
+        expect(global.Zotero.debug.calledWith(sinon.match(/Network error fetching/))).to.be.true;
+      });
+
+      it('should return count for successful response and valid count (non-NASA ADS) and not use Authorization header', async function() {
+        const mockResponseData = { some_count_field: 123 };
+        global.fetch.resolves({
+          ok: true,
+          status: 200,
+          json: sinon.stub().resolves(mockResponseData)
+        });
+        mockCallback.returns(mockResponseData.some_count_field);
+
+        const count = await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
+        expect(count).to.equal(123);
+        expect(mockCallback.calledWith(mockResponseData)).to.be.true;
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
+        const fetchCall = global.fetch.getCall(0);
+        expect(fetchCall.args[1]).to.not.have.property('headers');
+      });
+      
+      // ... other non-NASA ADS tests like invalid count, malformed JSON remain similar, ensuring no Auth header and no nasaadsApiKey pref call ...
+      it('should throw no-citation-count error for successful response but invalid count (string, non-NASA ADS)', async function() {
+        const mockResponseData = { some_count_field: "not-a-number" };
+        global.fetch.resolves({ ok: true, status: 200, json: sinon.stub().resolves(mockResponseData) });
+        mockCallback.returns(mockResponseData.some_count_field);
+        let actualError = null;
+        try { await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback); } catch (e) { actualError = e; }
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
+        expect(global.fetch.getCall(0).args[1]).to.not.have.property('headers');
+      });
+
+      it('should throw no-citation-count error for successful response but malformed JSON (non-NASA ADS)', async function() {
+        global.fetch.resolves({ ok: true, status: 200, json: sinon.stub().rejects(new Error('JSON parse error')) });
+        let actualError = null;
+        try { await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback); } catch (e) { actualError = e; }
+        expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
+        expect(global.Zotero.Prefs.get.calledWith('extensions.citationcounts.nasaadsApiKey', true)).to.be.false;
+        expect(global.fetch.getCall(0).args[1]).to.not.have.property('headers');
+      });
     });
   });
 });

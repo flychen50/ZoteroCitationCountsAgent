@@ -152,9 +152,13 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       
       expect(global.fetch.calledOnce).to.be.true;
       const fetchCall = global.fetch.getCall(0);
-      expect(fetchCall.args[0]).to.include('https://api.adsabs.harvard.edu/v1/search/query');
-      expect(fetchCall.args[0]).to.include('q=doi:10.1234%2Ftest.doi'); // URI encoded
-      expect(fetchCall.args[0]).to.include('api_key=TEST_KEY');
+      const expectedUrl = 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1234%2Ftest.doi&fl=citation_count';
+      expect(fetchCall.args[0]).to.equal(expectedUrl);
+      expect(fetchCall.args[1]).to.deep.include({
+        headers: {
+          'Authorization': 'Bearer TEST_KEY'
+        }
+      });
       
       expect(mockItem.setField.calledOnceWith('extra', '42 citations (NASA ADS/DOI) [2023-01-01]\n')).to.be.true;
       expect(mockItem.saveTx.calledOnce).to.be.true;
@@ -173,16 +177,30 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('WRONG_KEY');
-
+      
+      const expectedUrlForError = 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1234%2Fanother.doi&fl=citation_count';
       global.fetch.resolves({
         ok: false,
         status: 401,
-        url: 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1234%2Fanother.doi&fl=citation_count&api_key=WRONG_KEY',
+        // The 'url' in the response object from fetch isn't directly used by _sendRequest's logic for determining NASA ADS,
+        // but it's good practice to have it match the request URL if it were a real response.
+        // The important part is that the _sendRequest function itself constructs the URL correctly
+        // and uses it in its internal logic (e.g., `url.includes("api.adsabs.harvard.edu")`).
+        // For the purpose of this test, the key is that fetch is called with the correct arguments.
+        url: expectedUrlForError 
       });
 
       await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
 
       expect(global.fetch.calledOnce).to.be.true;
+      const fetchCall = global.fetch.getCall(0);
+      expect(fetchCall.args[0]).to.equal(expectedUrlForError);
+      expect(fetchCall.args[1]).to.deep.include({
+        headers: {
+          'Authorization': 'Bearer WRONG_KEY'
+        }
+      });
+
       expect(mockItem.setField.called).to.be.false; // No citation update
       expect(mockItem.saveTx.called).to.be.false;
 

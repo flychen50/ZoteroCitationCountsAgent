@@ -445,21 +445,44 @@ ZoteroCitationCounts = {
    */
   _sendRequest: async function (url, callback) {
     let response;
+    let fetchOptions = {}; // Initialize fetch options
+    let originalUrlForLog = url; // Keep original URL for logging in case of modification
+
+    if (url.includes("api.adsabs.harvard.edu")) {
+      const apiKey = this.getPref("nasaadsApiKey");
+      if (apiKey && apiKey.trim() !== "") { // Check if apiKey is not null, undefined, or empty string
+        fetchOptions.headers = {
+          'Authorization': 'Bearer ' + apiKey
+        };
+      }
+      // Ensure api_key query parameter is removed from the URL if it was ever there
+      try {
+        let urlObj = new URL(url);
+        if (urlObj.searchParams.has('api_key')) {
+          urlObj.searchParams.delete('api_key');
+          url = urlObj.toString(); // Update URL to the one without api_key param
+        }
+      } catch (e) {
+        this._log(`Error parsing URL ${originalUrlForLog} for api_key removal: ${e.message}`);
+        // Decide if to proceed with original URL or throw, for now, log and proceed
+      }
+    }
+
     try {
-      response = await fetch(url);
+      response = await fetch(url, fetchOptions); // Pass fetchOptions (may include headers or be empty)
     } catch (networkError) {
       // Catch network errors (e.g., DNS resolution failure, server unreachable)
-      this._log(`Network error fetching ${url}: ${networkError.message}`);
+      this._log(`Network error fetching ${url}: ${networkError.message}`); // Use potentially modified URL for this log
       throw new Error("citationcounts-progresswindow-error-bad-api-response");
     }
 
     if (url.includes("api.adsabs.harvard.edu") && (response.status === 401 || response.status === 403)) {
-      this._log(`NASA ADS API key error for ${url}: status ${response.status}`);
+      this._log(`NASA ADS API key error for ${originalUrlForLog}: status ${response.status}. Used token: ${fetchOptions.headers && fetchOptions.headers.Authorization ? fetchOptions.headers.Authorization.substring(0, 15) + '...' : 'None'}`);
       throw new Error("citationcounts-progresswindow-error-nasaads-apikey");
     }
 
     if (!response.ok) {
-      this._log(`Bad API response for ${url}: status ${response.status}`);
+      this._log(`Bad API response for ${originalUrlForLog}: status ${response.status}`); // Use original URL for this log
       throw new Error("citationcounts-progresswindow-error-bad-api-response");
     }
 
@@ -468,11 +491,11 @@ ZoteroCitationCounts = {
       const count = parseInt(await callback(jsonData));
       if (!(Number.isInteger(count) && count >= 0)) {
         // throw generic error that will be converted by the catch block.
-        throw new Error("Invalid count"); 
+        throw new Error("Invalid count");
       }
       return count;
     } catch (error) { // Catches errors from response.json(), callback, parseInt, or the explicit throw
-      this._log(`Error processing API response for ${url}: ${error.message}`);
+      this._log(`Error processing API response for ${originalUrlForLog}: ${error.message}`); // Use original URL for this log
       // If it's already our specific NASA ADS key error, rethrow it.
       if (error.message === "citationcounts-progresswindow-error-nasaads-apikey") {
           throw error;
@@ -590,8 +613,7 @@ ZoteroCitationCounts = {
   },
 
   _nasaadsUrl: function (id, type) {
-    const apiKey = this.getPref("nasaadsApiKey");
-    return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count&api_key=${apiKey}`;
+    return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count`;
   },
 
   _nasaadsCallback: function (response) {
