@@ -19,6 +19,16 @@ Please report any bugs, questions, or feature requests in the Github repository.
 - _NEW:_ Fluent is used for localizing, while the locale file has been simplified and now cover the whole plugin. You are welcome to submit translations as a PR.
 - _NEW:_ The whole codebade has been refactored with a focus on easy maintenance, especially for the supported citation count APIs.
 
+## 项目结构重构说明
+
+本插件已重构目录结构以提升可维护性和可读性：
+
+- `src/` 目录：存放主要 JS 源码文件（`zoterocitationcounts.js`, `preferences.js`, `prefs.js`）。
+- 根目录：保留 `manifest.json`, `bootstrap.js`, `preferences.xhtml`, `README.md`, `LICENSE` 等配置和文档文件。
+- `locale/`、`bin/` 目录结构保持不变。
+
+如需开发或调试主功能，请前往 `src/` 目录。
+
 ## Acknowledgements
 
 This plugin is a refactored and enhanced version of Erik Schnetter's [Zotero Citations Counts Manager](https://github.com/eschnett/zotero-citationcounts) for Zotero 7. Code for that extension was based on [Zotero DOI Manager](https://github.com/bwiernik/zotero-shortdoi), which is based in part on [Zotero Google Scholar Citations](https://github.com/beloglazov/zotero-scholar-citations) by Anton Beloglazov.

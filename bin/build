@@ -1,11 +1,18 @@
-#!/bin/sh
+#!/bin/zsh
 
-cd ..
+cd "$(dirname "$0")/.."
 
 version='2.0'
 
 rm -f zoterocitationcountsmanager-${version}.xpi
-zip -r zoterocitationcountsmanager-${version}.xpi locale/* manifest.json bootstrap.js preferences.js preferences.xhtml prefs.js zoterocitationcounts.js
+zip -r zoterocitationcountsmanager-${version}.xpi \
+  locale/* \
+  manifest.json \
+  bootstrap.js \
+  preferences.xhtml \
+  src/zoterocitationcounts.js \
+  src/preferences.js \
+  src/prefs.js
 
 # To release a new version:
 # - increase version number in all files (not just here)

@@ -49,11 +49,15 @@ jobs:
       - name: List downloaded files (debug)
         run: ls -lh dist
 
+      - name: Get date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d_%H-%M-%S')" >> $GITHUB_OUTPUT
+
       - name: Create GitHub release
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }} - ${{ github.run_id }} - ${{ steps.date.outputs.date }}
           body: |
             Release of zotero-citation-counts-manager
           artifacts: dist/*.xpi
