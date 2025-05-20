@@ -168,6 +168,8 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(mockItemProgressInstance.setIcon.calledWith(sinon.match(/tick/))).to.be.true; // Or specific icon path
       expect(mockItemProgressInstance.setProgress.calledWith(100)).to.be.true;
 
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/DOI for item '${mockItem.id}'. Count: 42`);
+
       // Verify l10n calls for progress window headlines
       expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-headline', { api: 'NASA ADS' })).to.be.true;
       expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-finished-headline', { api: 'NASA ADS' })).to.be.true;
@@ -208,7 +210,9 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       const errorItemProgressCall = mockProgressWindowInstance.ItemProgress.getCall(1); // Second call is for the error.
       expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-error-nasaads-apikey', { api: 'NASA ADS' })).to.be.true;
       // Check the text passed to the error ItemProgress constructor
-      expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-nasaads-apikey'); 
+      expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-nasaads-apikey');
+      
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Failed to retrieve citation count for item '${mockItem.id}' after all attempts. Error: citationcounts-progresswindow-error-nasaads-apikey`);
     });
 
     it('Scenario 3: No DOI, No arXiv, No Title for NASA ADS (Insufficient Metadata)', async function() {
@@ -230,6 +234,8 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       const errorItemProgressCall = mockProgressWindowInstance.ItemProgress.getCall(1);
       expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-error-insufficient-metadata-for-title-search', { api: 'NASA ADS' })).to.be.true;
       expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-insufficient-metadata-for-title-search');
+      
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Failed to retrieve citation count for item '${mockItem.id}' after all attempts. Error: citationcounts-progresswindow-error-insufficient-metadata-for-title-search`);
     });
 
     it('Scenario 4: Successful Title Search for NASA ADS', async function() {
@@ -237,7 +243,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
         title: "My Test Paper", 
         authors: [{lastName: "Author"}], 
         year: "2023" 
-      });
+      }); // item.id will be "My Test Paper"
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -260,18 +266,21 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(mockItem.saveTx.calledOnce).to.be.true;
       
       expect(mockItemProgressInstance.setIcon.calledWith(sinon.match(/tick/))).to.be.true;
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/Title for item 'My Test Paper'. Count: 123`);
     });
 
-    it('Scenario 5: Title Search - No Results for NASA ADS', async function() {
-      const mockItem = createMockItem(null, "", null, null, { title: "Unknown Paper" });
+    it('Scenario 5: Title Search - No Results for NASA ADS (triggers "no-citation-count")', async function() {
+      const mockItem = createMockItem(null, "", null, null, { title: "Unknown Paper" }); // item.id will be "Unknown Paper"
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
 
+      // This response from _nasaadsCallback would return null, leading to "Invalid count" in _sendRequest,
+      // which then becomes "no-citation-count"
       global.fetch.resolves({
         ok: true,
         status: 200,
-        json: sinon.stub().resolves({ response: { docs: [], numFound: 0 } }),
+        json: sinon.stub().resolves({ response: { docs: [], numFound: 0 } }), // _nasaadsCallback returns null for this
       });
 
       await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
@@ -281,6 +290,9 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(fetchCall.args[0]).to.include('q=title%3A%22Unknown%20Paper%22');
       expect(mockItem.setField.called).to.be.false;
       expect(mockItemProgressInstance.setError.calledOnce).to.be.true;
+      
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: No citation count found via NASA ADS/Title for item 'Unknown Paper'.`);
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Failed to retrieve citation count for item 'Unknown Paper' after all attempts. Error: citationcounts-progresswindow-error-nasaads-no-results`);
       
       expect(mockProgressWindowInstance.ItemProgress.calledTwice).to.be.true;
       const errorItemProgressCall = mockProgressWindowInstance.ItemProgress.getCall(1);
@@ -319,14 +331,15 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
       
       expect(mockItem.setField.calledOnceWith('extra', '100 citations (NASA ADS/DOI) [2023-01-01]\n')).to.be.true;
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/DOI for item '${mockItem.id}'. Count: 100`);
     });
 
     it('Scenario 7: Prioritization - arXiv Search Preferred over Title Search (No DOI) for NASA ADS', async function() {
-      const mockItem = createMockItem(null, "", "2301.00001", null, { // arXiv ID, no DOI
+      const mockItem = createMockItem(null, "", "2301.00001", `https://arxiv.org/abs/2301.00001`, { // arXiv ID, no DOI
         title: "Title Also Ignored",
         authors: [{lastName: "SomeAuthor"}],
         year: "2023"
-      });
+      }); // item.id will be "2301.00001"
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -351,6 +364,51 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
 
       expect(mockItem.setField.calledOnceWith('extra', '75 citations (NASA ADS/arXiv) [2023-01-01]\n')).to.be.true;
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/arXiv for item '${mockItem.id}'. Count: 75`);
+    });
+
+    it('Scenario 8: No Citation Count Found via DOI for NASA ADS', async function() {
+      const mockItem = createMockItem('10.9999/nodoiresult');
+      mockItems = [mockItem];
+      mockGetSelectedItems.returns(mockItems);
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
+
+      // Mock fetch for DOI to return a response that _nasaadsCallback interprets as no citation count
+      global.fetch.resolves({
+        ok: true,
+        status: 200,
+        json: sinon.stub().resolves({ response: { docs: [], numFound: 0 } }), // No docs, so callback returns null
+      });
+
+      await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
+      
+      expect(mockItem.setField.called).to.be.false;
+      expect(mockItemProgressInstance.setError.calledOnce).to.be.true;
+      // This sequence: _nasaadsCallback returns null -> _sendRequest throws "Invalid count" ->
+      // _retrieveCitationCount catches, logs "No citation count found via NASA ADS/DOI...", rethrows "no-citation-count"
+      // -> _retrieveCitationCount's final error handling logs "Failed..." and throws.
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: No citation count found via NASA ADS/DOI for item '${mockItem.id}'.`);
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Failed to retrieve citation count for item '${mockItem.id}' after all attempts. Error: citationcounts-progresswindow-error-no-doi`);
+    });
+
+    it('Scenario 9: No Citation Count Found via arXiv for NASA ADS', async function() {
+      const mockItem = createMockItem(null, "", "2301.99999", "https://arxiv.org/abs/2301.99999");
+      mockItems = [mockItem];
+      mockGetSelectedItems.returns(mockItems);
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
+
+      global.fetch.resolves({
+        ok: true,
+        status: 200,
+        json: sinon.stub().resolves({ response: { docs: [], numFound: 0 } }), 
+      });
+
+      await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
+
+      expect(mockItem.setField.called).to.be.false;
+      expect(mockItemProgressInstance.setError.calledOnce).to.be.true;
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: No citation count found via NASA ADS/arXiv for item '${mockItem.id}'.`);
+      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Failed to retrieve citation count for item '${mockItem.id}' after all attempts. Error: citationcounts-progresswindow-error-no-arxiv`);
     });
 
   });
