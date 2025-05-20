@@ -1,6 +1,6 @@
-# Zotero 7 Citation Counts Manager Enhaned
+# Zotero 7 Citation Counts Manager Enhanced
 
-- [GitHub](https://github.com/FrLars21/ZoteroCitationCountsManager): Source
+- [GitHub](https://github.com/flychen50/ZoteroCitationCountsAgent): Source
   code repository
 
 This is an add-on for [Zotero](https://www.zotero.org), a research source management tool. The add-on can auto-fetch citation counts for journal articles using various APIs, including [Crossref](https://www.crossref.org), [INSPIRE-HEP](https://inspirehep.net), and [Semantic Scholar](https://www.semanticscholar.org). [Google Scholar](https://scholar.google.com) is not supported because automated access is against its terms of service.
@@ -18,17 +18,17 @@ Please report any bugs, questions, or feature requests in the Github repository.
 - _NEW:_ Improved _citation count retrieval operation_ status reporting, including item-specific error messages for those items where a citation count couldn't be retrieved.
 - _NEW:_ Concurrent citation count retrieval operations is now possible. Especially important for the autoretrieve feature.
 - _NEW:_ Fluent is used for localizing, while the locale file has been simplified and now cover the whole plugin. You are welcome to submit translations as a PR.
-- _NEW:_ The whole codebade has been refactored with a focus on easy maintenance, especially for the supported citation count APIs.
+- _NEW:_ The whole codebase has been refactored with a focus on easy maintenance, especially for the supported citation count APIs.
 
-## 项目结构重构说明
+## Project Structure Refactoring
 
-本插件已重构目录结构以提升可维护性和可读性：
+This plugin's directory structure has been refactored to improve maintainability and readability:
 
-- `src/` 目录：存放主要 JS 源码文件（`zoterocitationcounts.js`, `preferences.js`, `prefs.js`）。
-- 根目录：保留 `manifest.json`, `bootstrap.js`, `preferences.xhtml`, `README.md`, `LICENSE` 等配置和文档文件。
-- `locale/`、`bin/` 目录结构保持不变。
+- `src/` directory: Contains the main JS source files (`zoterocitationcounts.js`, `preferences.js`, `prefs.js`).
+- Root directory: Retains configuration and documentation files such as `manifest.json`, `bootstrap.js`, `preferences.xhtml`, `README.md`, and `LICENSE`.
+- `locale/` and `bin/` directory structures remain unchanged.
 
-如需开发或调试主功能，请前往 `src/` 目录。
+If you need to develop or debug the main functions, please go to the `src/` directory.
 
 ## Acknowledgements
 
@@ -37,7 +37,7 @@ Boilerplate for this plugin was based on Zotero's sample plugin for v7 [Make-It-
 
 ## Installing
 
-- Download the add-on (the .xpi file) from the latest release: https://github.com/FrLars21/ZoteroCitationCountsManager/releases
+- Download the add-on (the .xpi file) from the latest release: https://github.com/flychen50/ZoteroCitationCountsAgent/releases
 - To download the .xpi file, right click it and select 'Save link as'
 - Run Zotero (version 7.x)
 - Go to `Tools -> Add-ons`
@@ -58,8 +58,8 @@ To use the NASA ADS API, you need to set your API key. Follow these steps:
 To use the new build and release process, follow these steps:
 
 1. Ensure you have Node.js installed on your machine.
-2. Clone the repository: `git clone https://github.com/FrLars21/ZoteroCitationCountsManager.git`
-3. Navigate to the project directory: `cd ZoteroCitationCountsManager`
+2. Clone the repository: `git clone https://github.com/flychen50/ZoteroCitationCountsAgent.git`
+3. Navigate to the project directory: `cd ZoteroCitationCountsAgent`
 4. Install the dependencies: `npm install`
 5. Build the xpi file: `npm run build`
 6. The built xpi file will be located in the `dist/` directory.
