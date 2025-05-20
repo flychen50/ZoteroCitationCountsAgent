@@ -2,7 +2,7 @@
   "name": "zotero-citation-counts-manager",
   "version": "1.0.0",
   "scripts": {
-    "build": "web-ext build --source-dir=. --artifacts-dir=dist -n zoterocitationcountsmanager-2.0.0.xpi --ignore-files bin/* node_modules/* package.json package-lock.json README.md LICENSE .git/* .github/* .gitignore dist/*"
+    "build": "web-ext build --source-dir=. --artifacts-dir=dist --overwrite-dest -n zoterocitationcountsmanager-2.0.0.xpi --ignore-files bin/* node_modules/* package.json package-lock.json README.md LICENSE .git/* .github/* .gitignore dist/*"
   },
   "devDependencies": {
     "web-ext": "^6.4.0"
