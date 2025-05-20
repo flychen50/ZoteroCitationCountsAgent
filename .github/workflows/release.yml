@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: '14'
 
+      - name: Create dist directory
+        run: mkdir -p dist
+
       - name: Install dependencies
         run: npm install
 
