@@ -57,3 +57,4 @@ jobs:
           body: |
             Release of zotero-citation-counts-manager
           artifacts: dist/*.xpi
+          allowUpdates: true
