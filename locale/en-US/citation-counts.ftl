@@ -14,6 +14,7 @@ citationcounts-progresswindow-error-no-doi = No DOI field exists on the item.
 citationcounts-progresswindow-error-no-arxiv = No arXiv id found on the item.
 citationcounts-progresswindow-error-no-doi-or-arxiv = No DOI / arXiv ID found on the item.
 citationcounts-progresswindow-error-bad-api-response = Problem accesing the { $api } API.
+citationcounts-progresswindow-error-nasaads-apikey = NASA ADS API Key error. Please check your key in preferences or visit the NASA ADS website for more information. It's also possible you've hit an API rate limit.
 citationcounts-progresswindow-error-no-citation-count = { $api } doesn't have a citation count for this item.
 
 ## For the "Tools" menu, where the "autoretrieve" preference can be set.
