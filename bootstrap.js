@@ -1,7 +1,7 @@
 let ZoteroCitationCounts, itemObserver;
 
 async function startup({ id, version, rootURI }) {
-  Services.scriptloader.loadSubScript(rootURI + "zoterocitationcounts.js");
+  Services.scriptloader.loadSubScript(rootURI + "src/zoterocitationcounts.js");
 
   ZoteroCitationCounts.init({ id, version, rootURI });
   ZoteroCitationCounts.addToAllWindows();
@@ -13,7 +13,7 @@ async function startup({ id, version, rootURI }) {
     ),
     image: ZoteroCitationCounts.icon("edit-list-order", false),
     src: "preferences.xhtml",
-    scripts: ["preferences.js"],
+    scripts: ["src/preferences.js"],
   });
 
   await Zotero.ItemTreeManager.registerColumns({
