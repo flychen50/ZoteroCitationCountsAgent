@@ -444,23 +444,46 @@ ZoteroCitationCounts = {
    * Send a request to a specified url, handle response with specified callback, and return a validated integer.
    */
   _sendRequest: async function (url, callback) {
-    const response = await fetch(url)
-      .then((response) => response.json())
-      .catch(() => {
-        throw new Error("citationcounts-progresswindow-error-bad-api-response");
-      });
+    let response;
+    try {
+      response = await fetch(url);
+    } catch (networkError) {
+      // Catch network errors (e.g., DNS resolution failure, server unreachable)
+      this._log(`Network error fetching ${url}: ${networkError.message}`);
+      throw new Error("citationcounts-progresswindow-error-bad-api-response");
+    }
+
+    if (url.includes("api.adsabs.harvard.edu") && (response.status === 401 || response.status === 403)) {
+      this._log(`NASA ADS API key error for ${url}: status ${response.status}`);
+      throw new Error("citationcounts-progresswindow-error-nasaads-apikey");
+    }
+
+    if (!response.ok) {
+      this._log(`Bad API response for ${url}: status ${response.status}`);
+      throw new Error("citationcounts-progresswindow-error-bad-api-response");
+    }
 
     try {
-      const count = parseInt(await callback(response));
-
+      const jsonData = await response.json();
+      const count = parseInt(await callback(jsonData));
       if (!(Number.isInteger(count) && count >= 0)) {
-        // throw generic error since catch bloc will convert it.
-        throw new Error();
+        // throw generic error that will be converted by the catch block.
+        throw new Error("Invalid count"); 
       }
-
       return count;
-    } catch (error) {
-      throw new Error("citationcounts-progresswindow-error-no-citation-count");
+    } catch (error) { // Catches errors from response.json(), callback, parseInt, or the explicit throw
+      this._log(`Error processing API response for ${url}: ${error.message}`);
+      // If it's already our specific NASA ADS key error, rethrow it.
+      if (error.message === "citationcounts-progresswindow-error-nasaads-apikey") {
+          throw error;
+      }
+      // Check if the error came from parsing or callback logic (e.g., "Invalid count"), differentiate from bad-api-response
+      if (error.message !== "citationcounts-progresswindow-error-bad-api-response") {
+          throw new Error("citationcounts-progresswindow-error-no-citation-count");
+      }
+      // Rethrow "citationcounts-progresswindow-error-bad-api-response" if it somehow propagated here,
+      // or any other unexpected error that wasn't specifically handled above.
+      throw error; 
     }
   },
 
