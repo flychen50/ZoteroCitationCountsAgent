@@ -440,6 +440,47 @@ ZoteroCitationCounts = {
     return encodeURIComponent(arxivMatch[1]);
   },
 
+  _getItemMetadataForAdsQuery: function (item) {
+    const metadata = {
+      title: null,
+      author: null,
+      year: null,
+    };
+
+    // Extract Title
+    const title = item.getField("title");
+    if (title) {
+      metadata.title = title;
+    }
+
+    // Extract Year
+    let year = item.getField("year");
+    if (year) {
+      metadata.year = String(year);
+    } else {
+      const date = item.getField("date");
+      if (date) {
+        const yearMatch = String(date).match(/^(?:c\. )?(\d{4})/); // Matches "YYYY" at the start, handles "c. YYYY"
+        if (yearMatch && yearMatch[1]) {
+          metadata.year = yearMatch[1];
+        }
+      }
+    }
+
+    // Extract Author's Last Name
+    const creators = item.getCreators();
+    if (creators && creators.length > 0) {
+      const firstCreator = creators[0];
+      if (firstCreator.lastName) {
+        metadata.author = firstCreator.lastName;
+      } else if (firstCreator.name) {
+        metadata.author = firstCreator.name; // Fallback to 'name' if 'lastName' is not available
+      }
+    }
+
+    return metadata;
+  },
+
   /**
    * Send a request to a specified url, handle response with specified callback, and return a validated integer.
    */
@@ -501,64 +542,134 @@ ZoteroCitationCounts = {
     urlFunction,
     requestCallback
   ) {
-    let errorMessage = "";
-    let doiField,
-      arxivField = false;
+    let doiError = null;
+    let arxivError = null;
+    let titleError = null;
 
+    // DOI Attempt
     if (useDoi) {
       try {
-        doiField = this._getDoi(item);
-
+        const doiField = this._getDoi(item);
         const count = await this._sendRequest(
           urlFunction(doiField, "doi"),
           requestCallback
         );
-
         return [count, `${apiName}/DOI`];
       } catch (error) {
-        errorMessage = error.message;
-      }
-
-      // if arxiv is not used, throw errors picked up along the way now.
-      if (!useArxiv) {
-        throw new Error(errorMessage);
+        doiError = error;
       }
     }
 
-    // If doi is not used for this api or if it is, but was unsuccessfull, and arxiv is used.
+    // ArXiv Attempt
     if (useArxiv) {
-      // save the error message from the doi operation.
-      const doiErrorMessage = errorMessage;
-
       try {
-        arxivField = this._getArxiv(item);
-
+        const arxivField = this._getArxiv(item);
         const count = await this._sendRequest(
           urlFunction(arxivField, "arxiv"),
           requestCallback
         );
-
         return [count, `${apiName}/arXiv`];
       } catch (error) {
-        errorMessage = error.message;
+        arxivError = error;
       }
-
-      // if both no doi and no arxiv id on item
-      if (useDoi && !doiField && !arxivField) {
-        throw new Error("citationcounts-progresswindow-error-no-doi-or-arxiv");
-      }
-
-      // show proper error from unsuccessfull doi operation
-      if (useDoi && !arxivField && doiErrorMessage) {
-        throw new Error(doiErrorMessage);
-      }
-
-      // throw the last error incurred.
-      throw new Error(errorMessage);
     }
 
-    //if none is used, it is an internal error.
-    throw new Error("citationcounts-internal-error");
+    // NASA ADS Title Search Attempt
+    if (apiName === "NASA ADS") {
+      // Proceed if DOI/arXiv attempts didn't return or if their errors are "not found" types.
+      // Critical errors from DOI/arXiv attempts will be prioritized in the error handling below.
+      const metadata = this._getItemMetadataForAdsQuery(item);
+      if (metadata && metadata.title && (metadata.author || metadata.year)) {
+        try {
+          const count = await this._sendRequest(
+            urlFunction(metadata, "title_author_year"),
+            requestCallback
+          );
+          return [count, `${apiName}/Title`];
+        } catch (error) {
+          titleError = error;
+        }
+      } else {
+        // Only set this error if no other more critical error (like API key) has already occurred for title.
+        if (!titleError) { 
+          titleError = new Error("citationcounts-progresswindow-error-insufficient-metadata-for-title-search");
+        }
+      }
+    }
+
+    // Final Error Handling
+
+    // Prioritize critical errors (API key, bad response, etc.) over "not found" errors.
+    if (doiError && doiError.message !== "citationcounts-progresswindow-error-no-doi") {
+      throw doiError;
+    }
+    if (arxivError && arxivError.message !== "citationcounts-progresswindow-error-no-arxiv") {
+      throw arxivError;
+    }
+    // For titleError, "no-citation-count" is a valid "not found" type error from ADS, so don't treat it as critical here.
+    // "insufficient-metadata" is also not critical in the same way as an API key error.
+    if (titleError && 
+        titleError.message !== "citationcounts-progresswindow-error-no-citation-count" &&
+        titleError.message !== "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
+      throw titleError;
+    }
+    
+    // If we're here, all attempts failed or resulted in "not found" or "insufficient metadata" errors.
+    if (apiName === "NASA ADS") {
+      // Check if all avenues for NASA ADS are exhausted or resulted in non-critical errors.
+      const doiFailedOrNotUsed = !useDoi || (doiError && doiError.message === "citationcounts-progresswindow-error-no-doi");
+      const arxivFailedOrNotUsed = !useArxiv || (arxivError && arxivError.message === "citationcounts-progresswindow-error-no-arxiv");
+      // titleError here could be "no-citation-count", "insufficient-metadata", or a critical one already thrown.
+      // We are interested if a title search was attempted and failed non-critically, or was not possible.
+      const titleSearchFailedOrNotPossible = titleError !== null;
+
+
+      if (doiFailedOrNotUsed && arxivFailedOrNotUsed && titleSearchFailedOrNotPossible) {
+         // If titleError is "insufficient-metadata", that's the most specific.
+        if (titleError && titleError.message === "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
+          throw titleError;
+        }
+        // If title search resulted in "no-citation-count" after DOI/arXiv also yielded nothing of substance
+        if (titleError && titleError.message === "citationcounts-progresswindow-error-no-citation-count") {
+            throw new Error("citationcounts-progresswindow-error-nasaads-no-results");
+        }
+        // If title search itself had a critical error, it would have been thrown above.
+        // If titleError is null here, it means title search was not attempted (e.g. not NASA ADS, or metadata was missing but didn't set titleError - fixed above)
+        // or it was successful (which means we wouldn't be in this error handling block).
+        // So, if titleError is null but doi/arxiv failed, this implies title search was not relevant or didn't even get to set an error.
+        // This case should ideally be covered by "insufficient metadata" or the general "no-doi-or-arxiv" if title wasn't applicable.
+        // Given the logic, if titleSearchFailedOrNotPossible is true, titleError is not null.
+        throw new Error("citationcounts-progresswindow-error-nasaads-no-results");
+      }
+      if (titleError) throw titleError; // If title search failed (e.g. no-citation-count, insufficient-metadata)
+    }
+
+    // General "Not Found" type errors for any API
+    if (useDoi && doiError && useArxiv && arxivError) { // Both attempted, both are "no-id" type
+      throw new Error("citationcounts-progresswindow-error-no-doi-or-arxiv");
+    }
+    if (useDoi && doiError) { // Only DOI attempted (or arXiv not attempted/successful) and DOI is "no-id"
+      throw doiError;
+    }
+    if (useArxiv && arxivError) { // Only arXiv attempted (or DOI not attempted/successful) and arXiv is "no-id"
+      throw arxivError;
+    }
+
+    // Fallback if no specific error was thrown. This indicates an unhandled case or an API configured with no valid ID types.
+    // If an API is configured (e.g. useDoi=true) but no error was set (e.g. _getDoi didn't throw, _sendRequest didn't throw but we still didn't return)
+    // this is an internal logic issue.
+    if (useDoi || useArxiv || apiName === "NASA ADS") {
+      // If any retrieval method was supposed to be active but we reached here without throwing.
+      // This might happen if e.g. useDoi is true, but doiError is null (somehow).
+      // This path should ideally not be reached if logic is perfect.
+      this._log(`Internal error: Reached end of _retrieveCitationCount for ${apiName} without success or specific error. DOI error: ${doiError}, ArXiv error: ${arxivError}, Title error: ${titleError}`);
+      throw new Error("citationcounts-progresswindow-error-unknown"); // A generic "unknown" or "internal"
+    }
+    
+    // If the API was somehow called with no valid types (e.g. useDoi=false, useArxiv=false, and not NASA ADS)
+    // This is an internal configuration error.
+    this._log(`Configuration error: _retrieveCitationCount called for ${apiName} with no valid ID types enabled.`);
+    throw new Error("citationcounts-internal-error"); // Or a more specific "misconfigured API" error
   },
 
   /////////////////////////////////////////////
@@ -595,12 +706,38 @@ ZoteroCitationCounts = {
     return count;
   },
 
-  _nasaadsUrl: function (id, type) {
+  _nasaadsUrl: function (id, type, query_params) {
     // NASA ADS API key should be sent via HTTP header, not as a URL param
-    return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count`;
+    if (type === "doi" || type === "arxiv") {
+      return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count`;
+    } else if (type === "title_author_year") {
+      let queryString = "";
+      if (id && id.title) {
+        queryString += `title:"${encodeURIComponent(id.title)}" `;
+      }
+      if (id && id.author) {
+        queryString += `author:"${encodeURIComponent(id.author)}" `;
+      }
+      if (id && id.year) {
+        queryString += `year:${encodeURIComponent(id.year)} `;
+      }
+      queryString = queryString.trim(); // Remove trailing space
+      return `https://api.adsabs.harvard.edu/v1/search/query?q=${queryString}&fl=citation_count`;
+    }
+    // Fallback or error handling if needed, though the problem description doesn't specify
+    return ""; 
   },
 
   _nasaadsCallback: function (response) {
-    return response.response.docs[0].citation_count;
+    if (response.response && response.response.numFound > 1) {
+      this._log(`NASA ADS query returned ${response.response.numFound} results. Using the first one.`);
+    }
+
+    if (response.response && response.response.docs && response.response.docs.length > 0 && response.response.docs[0].hasOwnProperty('citation_count')) {
+      return response.response.docs[0].citation_count;
+    } else {
+      this._log('NASA ADS response did not contain expected citation_count. Response: ' + JSON.stringify(response));
+      return null; // This will be caught by parseInt validation in _sendRequest
+    }
   },
 };

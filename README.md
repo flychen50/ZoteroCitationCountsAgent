@@ -12,6 +12,7 @@ Please report any bugs, questions, or feature requests in the Github repository.
 - Autoretrieve citation counts when a new item is added to your Zotero library.
 - Retrieve citation counts manually by right-clicking on one or more items in your Zotero library.
 - Works with the following APIs: [Crossref](https://www.crossref.org), [INSPIRE-HEP](https://inspirehep.net), [Semantic Scholar](https://www.semanticscholar.org), and [NASA ADS](https://ui.adsabs.harvard.edu).
+- For NASA ADS, if DOI or arXiv ID is missing, attempts to fetch citations using title, author, and year.
 - _NEW:_ The plugin is compatible with **Zotero 7** (Zotero 6 is **NOT** supported!).
 - _NEW:_ The plugin registers a custom column ("Citation Counts") in your Zotero library so that items can be **ordered by citation count**.
 - _NEW:_ Improved _citation count retrieval operation_ status reporting, including item-specific error messages for those items where a citation count couldn't be retrieved.
