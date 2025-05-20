@@ -31,6 +31,7 @@ citationcounts-preferences-pane-autoretrieve-api =
     .label = { $api }
 citationcounts-preferences-pane-autoretrieve-api-none =
     .label = No
+citationcounts-preferences-pane-nasaads-api-key-label = NASA ADS API Key
 
 ## Misc
 citationcounts-internal-error = Internal error
