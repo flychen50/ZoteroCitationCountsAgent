@@ -3,26 +3,31 @@ const sinon = require('sinon');
 const fs = require('fs');
 const path = require('path');
 
-// Helper function from the subtask description
-function createMockItem(doi, extraContent = "", arxivId = null, url = null) {
+// Updated Helper function
+function createMockItem(doi, extraContent = "", arxivId = null, url = null, metadata = {}) {
   const item = {
     _DOI: doi,
     _extra: extraContent,
-    _arxivId: arxivId,
-    _url: url,
+    _arxivId: arxivId, // Note: _getArxiv primarily uses 'url' field
+    _url: url || (arxivId ? `https://arxiv.org/abs/${arxivId}` : null),
+    _metadata: metadata, // Store for clarity, used in stubs
     getField: sinon.stub(),
+    getCreators: sinon.stub(), // For author extraction
     setField: sinon.stub(),
     saveTx: sinon.stub().resolves(),
     isFeedItem: false,
-    // A simple way to identify items for debugging tests
-    id: doi || arxivId || `item-${Math.random().toString(36).substr(2, 9)}`,
+    id: metadata.title || doi || arxivId || `item-${Math.random().toString(36).substr(2, 9)}`,
   };
   item.getField.withArgs('DOI').returns(item._DOI);
   item.getField.withArgs('extra').returns(item._extra);
-  item.getField.withArgs('url').returns(item._url); // For _getArxiv
-  // If your _getArxiv logic is more complex, adjust this stub or add more specific ones.
-  // For example, if it parses arXiv ID from the 'extra' field as a fallback:
-  // item.getField.withArgs('extra').returns(item._extra); 
+  item.getField.withArgs('url').returns(item._url); 
+  
+  // Stubs for _getItemMetadataForAdsQuery
+  item.getField.withArgs('title').returns(item._metadata.title || null);
+  item.getCreators.returns(item._metadata.authors || []); // Expects array of creator objects
+  item.getField.withArgs('year').returns(item._metadata.year || null);
+  item.getField.withArgs('date').returns(item._metadata.date || null); // Fallback for year
+
   return item;
 }
 
@@ -145,7 +150,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       global.fetch.resolves({
         ok: true,
         status: 200,
-        json: sinon.stub().resolves({ response: { docs: [{ citation_count: 42 }] } }),
+        json: sinon.stub().resolves({ response: { docs: [{ citation_count: 42 }], numFound: 1 } }),
       });
 
       await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
@@ -154,7 +159,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       const fetchCall = global.fetch.getCall(0);
       expect(fetchCall.args[0]).to.include('https://api.adsabs.harvard.edu/v1/search/query');
       expect(fetchCall.args[0]).to.include('q=doi:10.1234%2Ftest.doi'); // URI encoded
-      expect(fetchCall.args[0]).to.include('api_key=TEST_KEY');
+      expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
       
       expect(mockItem.setField.calledOnceWith('extra', '42 citations (NASA ADS/DOI) [2023-01-01]\n')).to.be.true;
       expect(mockItem.saveTx.calledOnce).to.be.true;
@@ -174,15 +179,22 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('WRONG_KEY');
 
+      // Ensure the URL in the resolved object matches what _sendRequest would use, for the status check logic
+      const expectedUrl = 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1234%2Fanother.doi&fl=citation_count';
       global.fetch.resolves({
         ok: false,
         status: 401,
-        url: 'https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1234%2Fanother.doi&fl=citation_count&api_key=WRONG_KEY',
+        url: expectedUrl, 
+        json: sinon.stub().resolves({ error: "Unauthorized" }) // Mock a JSON body for the error
       });
-
+      
       await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
 
       expect(global.fetch.calledOnce).to.be.true;
+      const fetchCall = global.fetch.getCall(0);
+      expect(fetchCall.args[0]).to.equal(expectedUrl);
+      expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer WRONG_KEY');
+
       expect(mockItem.setField.called).to.be.false; // No citation update
       expect(mockItem.saveTx.called).to.be.false;
 
@@ -199,31 +211,147 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-nasaads-apikey'); 
     });
 
-    it('Scenario 3: No DOI for NASA ADS (when DOI is the only identifier)', async function() {
-      const mockItem = createMockItem(null); // No DOI
+    it('Scenario 3: No DOI, No arXiv, No Title for NASA ADS (Insufficient Metadata)', async function() {
+      const mockItem = createMockItem(null, "", null, null, { title: null, authors: [], year: null }); // No identifiers
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
-      // For this test, let's assume NASA ADS is configured to only use DOI or DOI is tried first.
-      // The nasaAdsApiObject by default has useDoi: true, useArxiv: true.
-      // To force this scenario, we can either:
-      // 1. Temporarily modify nasaAdsApiObject.useArxiv = false (if the test setup allows deep copy or restoration)
-      // 2. Ensure the mockItem doesn't have an arXiv ID either.
-      // The current createMockItem creates it without arXiv unless specified.
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
 
       await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
 
-      expect(global.fetch.called).to.be.false; // Fetch should not be called if DOI is missing and it's the primary/only ID
+      expect(global.fetch.called).to.be.false; // Fetch should not be called
       expect(mockItem.setField.called).to.be.false;
       expect(mockItem.saveTx.called).to.be.false;
 
       expect(mockProgressWindowInstance.ItemProgress.calledOnce).to.be.true; // For the item itself
       expect(mockItemProgressInstance.setError.calledOnce).to.be.true;
-
-      // Check for the "no DOI" error message.
+      
       expect(mockProgressWindowInstance.ItemProgress.calledTwice).to.be.true; // Original item + error item
       const errorItemProgressCall = mockProgressWindowInstance.ItemProgress.getCall(1);
-      expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-error-no-doi', { api: 'NASA ADS' })).to.be.true;
-      expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-no-doi');
+      expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-error-insufficient-metadata-for-title-search', { api: 'NASA ADS' })).to.be.true;
+      expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-insufficient-metadata-for-title-search');
     });
+
+    it('Scenario 4: Successful Title Search for NASA ADS', async function() {
+      const mockItem = createMockItem(null, "", null, null, { 
+        title: "My Test Paper", 
+        authors: [{lastName: "Author"}], 
+        year: "2023" 
+      });
+      mockItems = [mockItem];
+      mockGetSelectedItems.returns(mockItems);
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
+      
+      global.fetch.resolves({
+        ok: true,
+        status: 200,
+        json: sinon.stub().resolves({ response: { docs: [{ citation_count: 123 }], numFound: 1 } }),
+      });
+
+      await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
+      
+      expect(global.fetch.calledOnce).to.be.true;
+      const fetchCall = global.fetch.getCall(0);
+      expect(fetchCall.args[0]).to.include('https://api.adsabs.harvard.edu/v1/search/query');
+      expect(fetchCall.args[0]).to.include('q=title%3A%22My%20Test%20Paper%22%20author%3A%22Author%22%20year%3A2023');
+      expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
+      
+      expect(mockItem.setField.calledOnceWith('extra', '123 citations (NASA ADS/Title) [2023-01-01]\n')).to.be.true;
+      expect(mockItem.saveTx.calledOnce).to.be.true;
+      
+      expect(mockItemProgressInstance.setIcon.calledWith(sinon.match(/tick/))).to.be.true;
+    });
+
+    it('Scenario 5: Title Search - No Results for NASA ADS', async function() {
+      const mockItem = createMockItem(null, "", null, null, { title: "Unknown Paper" });
+      mockItems = [mockItem];
+      mockGetSelectedItems.returns(mockItems);
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
+
+      global.fetch.resolves({
+        ok: true,
+        status: 200,
+        json: sinon.stub().resolves({ response: { docs: [], numFound: 0 } }),
+      });
+
+      await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
+
+      expect(global.fetch.calledOnce).to.be.true;
+      const fetchCall = global.fetch.getCall(0);
+      expect(fetchCall.args[0]).to.include('q=title%3A%22Unknown%20Paper%22');
+      expect(mockItem.setField.called).to.be.false;
+      expect(mockItemProgressInstance.setError.calledOnce).to.be.true;
+      
+      expect(mockProgressWindowInstance.ItemProgress.calledTwice).to.be.true;
+      const errorItemProgressCall = mockProgressWindowInstance.ItemProgress.getCall(1);
+      expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-error-nasaads-no-results', { api: 'NASA ADS' })).to.be.true;
+      expect(errorItemProgressCall.args[1]).to.equal('citationcounts-progresswindow-error-nasaads-no-results');
+    });
+    
+    it('Scenario 6: Prioritization - DOI Search Preferred over Title Search for NASA ADS', async function() {
+      const mockItem = createMockItem('10.5555/doi-wins', "", null, null, {
+        title: "Title Ignored",
+        authors: [{lastName: "Author"}],
+        year: "2020"
+      });
+      mockItems = [mockItem];
+      mockGetSelectedItems.returns(mockItems);
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
+
+      // Mock fetch to return different counts for DOI and title
+      const doiResponse = { response: { docs: [{ citation_count: 100 }], numFound: 1 } }; // DOI count
+      const titleResponse = { response: { docs: [{ citation_count: 50 }], numFound: 1 } }; // Title count (should not be used)
+
+      global.fetch.callsFake(async (url) => {
+        if (url.includes('doi:10.5555%2Fdoi-wins')) {
+          return { ok: true, status: 200, json: sinon.stub().resolves(doiResponse) };
+        } else if (url.includes('title%3A%22Title%20Ignored%22')) {
+          return { ok: true, status: 200, json: sinon.stub().resolves(titleResponse) };
+        }
+        return { ok: false, status: 404, json: sinon.stub().resolves({error: 'Not Found'})};
+      });
+
+      await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
+
+      expect(global.fetch.calledOnce).to.be.true; // Should only be called once for DOI
+      const fetchCall = global.fetch.getCall(0);
+      expect(fetchCall.args[0]).to.include('q=doi:10.5555%2Fdoi-wins');
+      expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
+      
+      expect(mockItem.setField.calledOnceWith('extra', '100 citations (NASA ADS/DOI) [2023-01-01]\n')).to.be.true;
+    });
+
+    it('Scenario 7: Prioritization - arXiv Search Preferred over Title Search (No DOI) for NASA ADS', async function() {
+      const mockItem = createMockItem(null, "", "2301.00001", null, { // arXiv ID, no DOI
+        title: "Title Also Ignored",
+        authors: [{lastName: "SomeAuthor"}],
+        year: "2023"
+      });
+      mockItems = [mockItem];
+      mockGetSelectedItems.returns(mockItems);
+      global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
+
+      const arxivResponse = { response: { docs: [{ citation_count: 75 }], numFound: 1 } }; // arXiv count
+      const titleResponse = { response: { docs: [{ citation_count: 25 }], numFound: 1 } }; // Title count
+
+      global.fetch.callsFake(async (url) => {
+        if (url.includes('q=arxiv:2301.00001')) {
+          return { ok: true, status: 200, json: sinon.stub().resolves(arxivResponse) };
+        } else if (url.includes('title%3A%22Title%20Also%20Ignored%22')) {
+          return { ok: true, status: 200, json: sinon.stub().resolves(titleResponse) };
+        }
+        return { ok: false, status: 404, json: sinon.stub().resolves({error: 'Not Found'})};
+      });
+      
+      await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
+
+      expect(global.fetch.calledOnce).to.be.true; // Should only be called once for arXiv
+      const fetchCall = global.fetch.getCall(0);
+      expect(fetchCall.args[0]).to.include('q=arxiv:2301.00001');
+      expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
+
+      expect(mockItem.setField.calledOnceWith('extra', '75 citations (NASA ADS/arXiv) [2023-01-01]\n')).to.be.true;
+    });
+
   });
 });
