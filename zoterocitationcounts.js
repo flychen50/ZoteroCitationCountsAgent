@@ -68,6 +68,16 @@ ZoteroCitationCounts = {
           responseCallback: this._semanticScholarCallback,
         },
       },
+      {
+        key: "nasaads",
+        name: "NASA ADS",
+        useDoi: true,
+        useArxiv: true,
+        methods: {
+          urlBuilder: this._nasaadsUrl,
+          responseCallback: this._nasaadsCallback,
+        },
+      },
     ];
 
     this._initialized = true;
@@ -554,5 +564,14 @@ ZoteroCitationCounts = {
     // throttle Semantic Scholar so we don't reach limit.
     await new Promise((r) => setTimeout(r, 3000));
     return count;
+  },
+
+  _nasaadsUrl: function (id, type) {
+    const apiKey = this.getPref("nasaadsApiKey");
+    return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count&api_key=${apiKey}`;
+  },
+
+  _nasaadsCallback: function (response) {
+    return response.response.docs[0].citation_count;
   },
 };

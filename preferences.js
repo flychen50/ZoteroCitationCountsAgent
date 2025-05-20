@@ -15,6 +15,10 @@ ZoteroCitationCounts_Prefs = {
       key: "semanticscholar",
       name: "Semantic Scholar",
     },
+    {
+      key: "nasaads",
+      name: "NASA ADS",
+    },
   ],
 
   init: function () {
