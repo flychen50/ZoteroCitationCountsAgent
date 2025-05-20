@@ -1,0 +1,10 @@
+{
+  "name": "zotero-citation-counts-manager",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "web-ext build --source-dir=src --artifacts-dir=dist"
+  },
+  "devDependencies": {
+    "web-ext": "^6.4.0"
+  }
+}

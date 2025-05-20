@@ -42,6 +42,15 @@ To use the NASA ADS API, you need to set your API key. Follow these steps:
 2. In Zotero, go to `Tools -> Add-ons -> Citation Counts -> Preferences`.
 3. Enter your NASA ADS API key in the provided field.
 
-## License
+## Using the Build and Release Process
 
-Distributed under the Mozilla Public License (MPL) Version 2.0.
+To use the new build and release process, follow these steps:
+
+1. Ensure you have Node.js installed on your machine.
+2. Clone the repository: `git clone https://github.com/FrLars21/ZoteroCitationCountsManager.git`
+3. Navigate to the project directory: `cd ZoteroCitationCountsManager`
+4. Install the dependencies: `npm install`
+5. Build the xpi file: `npm run build`
+6. The built xpi file will be located in the `dist/` directory.
+
+The GitHub Actions workflow is configured to automatically build and create a release when changes are pushed to the `main` branch or a new release is created. The release will include the source code and the built xpi file.
