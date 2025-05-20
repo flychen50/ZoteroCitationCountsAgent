@@ -44,14 +44,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: zotero-citation-counts-manager.xpi
+          path: dist
+
+      - name: List downloaded files (debug)
+        run: ls -lh dist
 
       - name: Create GitHub release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           body: |
             Release of zotero-citation-counts-manager
-          files: dist/*.xpi
+          artifacts: dist/*.xpi
