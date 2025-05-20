@@ -418,7 +418,7 @@ ZoteroCitationCountsAgent = {
   _getDoi: function (item) {
     const doi = item.getField("DOI");
     if (!doi) {
-      throw new Error("citationcounts-progresswindow-error-no-doi");
+      throw new Error("zoterocitationcountsagent-progresswindow-error-no-doi");
     }
 
     return encodeURIComponent(doi);
@@ -434,7 +434,7 @@ ZoteroCitationCountsAgent = {
       /(?:arxiv.org[/]abs[/]|arXiv:)([a-z.-]+[/]\d+|\d+[.]\d+)/i.exec(itemURL);
 
     if (!arxivMatch) {
-      throw new Error("citationcounts-progresswindow-error-no-arxiv");
+      throw new Error("zoterocitationcountsagent-progresswindow-error-no-arxiv");
     }
 
     return encodeURIComponent(arxivMatch[1]);
@@ -497,17 +497,17 @@ ZoteroCitationCountsAgent = {
     } catch (networkError) {
       // Catch network errors (e.g., DNS resolution failure, server unreachable)
       this._log(`Network error fetching ${url}: ${networkError.message}`);
-      throw new Error("citationcounts-progresswindow-error-bad-api-response");
+      throw new Error("zoterocitationcountsagent-progresswindow-error-bad-api-response");
     }
 
     if (url.includes("api.adsabs.harvard.edu") && (response.status === 401 || response.status === 403)) {
       this._log(`NASA ADS API key error for ${url}: status ${response.status}`);
-      throw new Error("citationcounts-progresswindow-error-nasaads-apikey");
+      throw new Error("zoterocitationcountsagent-progresswindow-error-nasaads-apikey");
     }
 
     if (!response.ok) {
       this._log(`Bad API response for ${url}: status ${response.status}`);
-      throw new Error("citationcounts-progresswindow-error-bad-api-response");
+      throw new Error("zoterocitationcountsagent-progresswindow-error-bad-api-response");
     }
 
     try {
@@ -521,14 +521,14 @@ ZoteroCitationCountsAgent = {
     } catch (error) { // Catches errors from response.json(), callback, parseInt, or the explicit throw
       this._log(`Error processing API response for ${url}: ${error.message}`);
       // If it's already our specific NASA ADS key error, rethrow it.
-      if (error.message === "citationcounts-progresswindow-error-nasaads-apikey") {
+      if (error.message === "zoterocitationcountsagent-progresswindow-error-nasaads-apikey") {
           throw error;
       }
       // Check if the error came from parsing or callback logic (e.g., "Invalid count"), differentiate from bad-api-response
-      if (error.message !== "citationcounts-progresswindow-error-bad-api-response") {
-          throw new Error("citationcounts-progresswindow-error-no-citation-count");
+      if (error.message !== "zoterocitationcountsagent-progresswindow-error-bad-api-response") {
+          throw new Error("zoterocitationcountsagent-progresswindow-error-no-citation-count");
       }
-      // Rethrow "citationcounts-progresswindow-error-bad-api-response" if it somehow propagated here,
+      // Rethrow "zoterocitationcountsagent-progresswindow-error-bad-api-response" if it somehow propagated here,
       // or any other unexpected error that wasn't specifically handled above.
       throw error; 
     }
@@ -557,7 +557,7 @@ ZoteroCitationCountsAgent = {
         this._log(`Successfully fetched citation count via ${apiName}/DOI for item '${item.getField('title') || item.id}'. Count: ${count}`);
         return [count, `${apiName}/DOI`];
       } catch (error) {
-        if (error.message === 'citationcounts-progresswindow-error-no-citation-count') {
+        if (error.message === 'zoterocitationcountsagent-progresswindow-error-no-citation-count') {
           this._log(`No citation count found via ${apiName}/DOI for item '${item.getField('title') || item.id}'.`);
         }
         doiError = error;
@@ -575,7 +575,7 @@ ZoteroCitationCountsAgent = {
         this._log(`Successfully fetched citation count via ${apiName}/arXiv for item '${item.getField('title') || item.id}'. Count: ${count}`);
         return [count, `${apiName}/arXiv`];
       } catch (error) {
-        if (error.message === 'citationcounts-progresswindow-error-no-citation-count') {
+        if (error.message === 'zoterocitationcountsagent-progresswindow-error-no-citation-count') {
           this._log(`No citation count found via ${apiName}/arXiv for item '${item.getField('title') || item.id}'.`);
         }
         arxivError = error;
@@ -596,7 +596,7 @@ ZoteroCitationCountsAgent = {
           this._log(`Successfully fetched citation count via ${apiName}/Title for item '${item.getField('title') || item.id}'. Count: ${count}`);
           return [count, `${apiName}/Title`];
         } catch (error) {
-          if (error.message === 'citationcounts-progresswindow-error-no-citation-count') {
+          if (error.message === 'zoterocitationcountsagent-progresswindow-error-no-citation-count') {
             this._log(`No citation count found via ${apiName}/Title for item '${item.getField('title') || item.id}'.`);
           }
           titleError = error;
@@ -604,7 +604,7 @@ ZoteroCitationCountsAgent = {
       } else {
         // Only set this error if no other more critical error (like API key) has already occurred for title.
         if (!titleError) { 
-          titleError = new Error("citationcounts-progresswindow-error-insufficient-metadata-for-title-search");
+          titleError = new Error("zoterocitationcountsagent-progresswindow-error-insufficient-metadata-for-title-search");
         }
       }
     }
@@ -612,19 +612,19 @@ ZoteroCitationCountsAgent = {
     // Final Error Handling
 
     // Prioritize critical errors (API key, bad response, etc.) over "not found" errors.
-    if (doiError && doiError.message !== "citationcounts-progresswindow-error-no-doi") {
+    if (doiError && doiError.message !== "zoterocitationcountsagent-progresswindow-error-no-doi") {
       this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${doiError.message}`);
       throw doiError;
     }
-    if (arxivError && arxivError.message !== "citationcounts-progresswindow-error-no-arxiv") {
+    if (arxivError && arxivError.message !== "zoterocitationcountsagent-progresswindow-error-no-arxiv") {
       this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${arxivError.message}`);
       throw arxivError;
     }
     // For titleError, "no-citation-count" is a valid "not found" type error from ADS, so don't treat it as critical here.
     // "insufficient-metadata" is also not critical in the same way as an API key error.
     if (titleError && 
-        titleError.message !== "citationcounts-progresswindow-error-no-citation-count" &&
-        titleError.message !== "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
+        titleError.message !== "zoterocitationcountsagent-progresswindow-error-no-citation-count" &&
+        titleError.message !== "zoterocitationcountsagent-progresswindow-error-insufficient-metadata-for-title-search") {
       this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${titleError.message}`);
       throw titleError;
     }
@@ -632,8 +632,8 @@ ZoteroCitationCountsAgent = {
     // If we're here, all attempts failed or resulted in "not found" or "insufficient metadata" errors.
     if (apiName === "NASA ADS") {
       // Check if all avenues for NASA ADS are exhausted or resulted in non-critical errors.
-      const doiFailedOrNotUsed = !useDoi || (doiError && doiError.message === "citationcounts-progresswindow-error-no-doi");
-      const arxivFailedOrNotUsed = !useArxiv || (arxivError && arxivError.message === "citationcounts-progresswindow-error-no-arxiv");
+      const doiFailedOrNotUsed = !useDoi || (doiError && doiError.message === "zoterocitationcountsagent-progresswindow-error-no-doi");
+      const arxivFailedOrNotUsed = !useArxiv || (arxivError && arxivError.message === "zoterocitationcountsagent-progresswindow-error-no-arxiv");
       // titleError here could be "no-citation-count", "insufficient-metadata", or a critical one already thrown.
       // We are interested if a title search was attempted and failed non-critically, or was not possible.
       const titleSearchFailedOrNotPossible = titleError !== null;
@@ -641,13 +641,13 @@ ZoteroCitationCountsAgent = {
 
       if (doiFailedOrNotUsed && arxivFailedOrNotUsed && titleSearchFailedOrNotPossible) {
          // If titleError is "insufficient-metadata", that's the most specific.
-        if (titleError && titleError.message === "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
+        if (titleError && titleError.message === "zoterocitationcountsagent-progresswindow-error-insufficient-metadata-for-title-search") {
           this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${titleError.message}`);
           throw titleError;
         }
         // If title search resulted in "no-citation-count" after DOI/arXiv also yielded nothing of substance
-        if (titleError && titleError.message === "citationcounts-progresswindow-error-no-citation-count") {
-            const finalError = new Error("citationcounts-progresswindow-error-nasaads-no-results");
+        if (titleError && titleError.message === "zoterocitationcountsagent-progresswindow-error-no-citation-count") {
+            const finalError = new Error("zoterocitationcountsagent-progresswindow-error-nasaads-no-results");
             this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${finalError.message}`);
             throw finalError;
         }
@@ -657,7 +657,7 @@ ZoteroCitationCountsAgent = {
         // So, if titleError is null but doi/arxiv failed, this implies title search was not relevant or didn't even get to set an error.
         // This case should ideally be covered by "insufficient metadata" or the general "no-doi-or-arxiv" if title wasn't applicable.
         // Given the logic, if titleSearchFailedOrNotPossible is true, titleError is not null.
-        const finalErrorNasaNoResults = new Error("citationcounts-progresswindow-error-nasaads-no-results");
+        const finalErrorNasaNoResults = new Error("zoterocitationcountsagent-progresswindow-error-nasaads-no-results");
         this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${finalErrorNasaNoResults.message}`);
         throw finalErrorNasaNoResults;
       }
@@ -669,7 +669,7 @@ ZoteroCitationCountsAgent = {
 
     // General "Not Found" type errors for any API
     if (useDoi && doiError && useArxiv && arxivError) { // Both attempted, both are "no-id" type
-      const finalErrorNoDoiOrArxiv = new Error("citationcounts-progresswindow-error-no-doi-or-arxiv");
+      const finalErrorNoDoiOrArxiv = new Error("zoterocitationcountsagent-progresswindow-error-no-doi-or-arxiv");
       this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${finalErrorNoDoiOrArxiv.message}`);
       throw finalErrorNoDoiOrArxiv;
     }
@@ -689,14 +689,14 @@ ZoteroCitationCountsAgent = {
       // If any retrieval method was supposed to be active but we reached here without throwing.
       // This might happen if e.g. useDoi is true, but doiError is null (somehow).
       // This path should ideally not be reached if logic is perfect.
-      const unknownError = new Error("citationcounts-progresswindow-error-unknown");
+      const unknownError = new Error("zoterocitationcountsagent-progresswindow-error-unknown");
       this._log(`Internal error: Reached end of _retrieveCitationCount for ${apiName} without success or specific error. DOI error: ${doiError}, ArXiv error: ${arxivError}, Title error: ${titleError}. Surfacing as: ${unknownError.message}`);
       throw unknownError; // A generic "unknown" or "internal"
     }
     
     // If the API was somehow called with no valid types (e.g. useDoi=false, useArxiv=false, and not NASA ADS)
     // This is an internal configuration error.
-    const internalError = new Error("citationcounts-internal-error");
+    const internalError = new Error("zoterocitationcountsagent-internal-error");
     this._log(`Configuration error: _retrieveCitationCount called for ${apiName} with no valid ID types enabled. Error: ${internalError.message}`);
     throw internalError; // Or a more specific "misconfigured API" error
   },
