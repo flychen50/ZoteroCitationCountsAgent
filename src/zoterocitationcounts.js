@@ -445,8 +445,14 @@ ZoteroCitationCounts = {
    */
   _sendRequest: async function (url, callback) {
     let response;
+    // Add Authorization header for NASA ADS
+    const headers = {};
+    if (url.includes("api.adsabs.harvard.edu")) {
+      const apiKey = this.getPref("nasaadsApiKey");
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
     try {
-      response = await fetch(url);
+      response = await fetch(url, { headers });
     } catch (networkError) {
       // Catch network errors (e.g., DNS resolution failure, server unreachable)
       this._log(`Network error fetching ${url}: ${networkError.message}`);
@@ -590,8 +596,8 @@ ZoteroCitationCounts = {
   },
 
   _nasaadsUrl: function (id, type) {
-    const apiKey = this.getPref("nasaadsApiKey");
-    return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count&api_key=${apiKey}`;
+    // NASA ADS API key should be sent via HTTP header, not as a URL param
+    return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count`;
   },
 
   _nasaadsCallback: function (response) {
