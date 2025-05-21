@@ -90,6 +90,171 @@ describe('ZoteroCitationCounts', function() {
       expect(actualUrl).to.equal(expectedUrl);
     });
   });
+
+  describe('_semanticScholarUrl', function() {
+    it('should construct the correct URL for DOI lookup', function() {
+      const id = '10.1000/xyz123';
+      const type = 'doi';
+      const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(id, type);
+      const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/${encodeURIComponent(id)}?fields=citationCount`;
+      expect(actualUrl).to.equal(expectedUrl);
+    });
+
+    it('should construct the correct URL for arXiv lookup', function() {
+      const id = '2303.12345';
+      const type = 'arxiv';
+      const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(id, type);
+      const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/arXiv:${encodeURIComponent(id)}?fields=citationCount`;
+      expect(actualUrl).to.equal(expectedUrl);
+    });
+
+    it('should construct the correct URL for title/author/year search with all fields', function() {
+      const metadata = {
+        title: "A Test Paper",
+        author: "Doe, J.", // Assuming author might have comma, should be encoded
+        year: "2023"
+      };
+      const type = 'title_author_year';
+      const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+      const expectedQuery = `title:${encodeURIComponent(metadata.title)}+author:${encodeURIComponent(metadata.author)}+year:${encodeURIComponent(metadata.year)}`;
+      const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+      expect(actualUrl).to.equal(expectedUrl);
+    });
+
+    it('should construct the correct URL for title/author/year search with title and author only', function() {
+      const metadata = {
+        title: "Another Test Paper",
+        author: "Smith"
+      };
+      const type = 'title_author_year';
+      const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+      const expectedQuery = `title:${encodeURIComponent(metadata.title)}+author:${encodeURIComponent(metadata.author)}`;
+      const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+      expect(actualUrl).to.equal(expectedUrl);
+    });
+
+    it('should construct the correct URL for title/author/year search with title and year only', function() {
+      const metadata = {
+        title: "A Third Test Paper",
+        year: "2021"
+      };
+      const type = 'title_author_year';
+      const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+      const expectedQuery = `title:${encodeURIComponent(metadata.title)}+year:${encodeURIComponent(metadata.year)}`;
+      const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+      expect(actualUrl).to.equal(expectedUrl);
+    });
+
+    it('should construct the correct URL for title/author/year search with title only', function() {
+      const metadata = {
+        title: "Title Only Paper"
+      };
+      const type = 'title_author_year';
+      const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+      const expectedQuery = `title:${encodeURIComponent(metadata.title)}`;
+      const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+      expect(actualUrl).to.equal(expectedUrl);
+    });
+  });
+
+  describe('_semanticScholarCallback', function() {
+    let clock;
+
+    beforeEach(function() {
+      // Use fake timers to control setTimeout for throttling tests
+      clock = sinon.useFakeTimers();
+    });
+
+    afterEach(function() {
+      clock.restore();
+    });
+
+    it('should return citationCount for direct DOI/ArXiv lookup response', async function() {
+      const mockResponse = {
+        paperId: "abcdef123456",
+        citationCount: 123
+      };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
+      expect(count).to.equal(123);
+    });
+
+    it('should return citationCount from the first result for title search response', async function() {
+      const mockResponse = {
+        total: 1,
+        data: [
+          { paperId: "zyxwvu987654", citationCount: 42, externalIds: {} }
+        ]
+      };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
+      expect(count).to.equal(42);
+    });
+
+    it('should log and use first result if title search returns multiple results', async function() {
+      const mockResponse = {
+        total: 2,
+        data: [
+          { paperId: "zyxwvu987654", citationCount: 77 },
+          { paperId: "abcdef123456", citationCount: 88 }
+        ]
+      };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      await promise;
+      expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar query returned 2 results. Using the first one./))).to.be.true;
+    });
+    
+    it('should return null if direct lookup response has no citationCount', async function() {
+        const mockResponse = { paperId: "abcdef123456" }; // Missing citationCount
+        const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+        await clock.tickAsync(3001);
+        const count = await promise;
+        expect(count).to.be.null;
+        expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar response did not contain expected citationCount/))).to.be.true;
+    });
+
+    it('should return null if title search response is empty', async function() {
+      const mockResponse = { total: 0, data: [] };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
+      expect(count).to.be.null;
+      expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar search response did not contain expected citationCount in the first result or no results found/))).to.be.true;
+    });
+
+    it('should return null if title search first result has no citationCount', async function() {
+      const mockResponse = {
+        total: 1,
+        data: [{ paperId: "zyxwvu987654" }] // Missing citationCount
+      };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
+      expect(count).to.be.null;
+      expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar search response did not contain expected citationCount in the first result or no results found/))).to.be.true;
+    });
+    
+    it('should apply a 3-second throttle', async function() {
+      const mockResponse = { citationCount: 10 };
+      const callbackPromise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      
+      // Check that it's not resolved immediately
+      let resolved = false;
+      callbackPromise.then(() => resolved = true);
+
+      await clock.tickAsync(2999); // Advance time by just under 3 seconds
+      expect(resolved).to.be.false;
+
+      await clock.tickAsync(1); // Advance time by 1ms to cross the 3000ms threshold
+      expect(resolved).to.be.true; // Now it should be resolved
+      
+      const count = await callbackPromise;
+      expect(count).to.equal(10);
+    });
+  });
   
   describe('getPref', function() {
     it('should call Zotero.Prefs.get with the correct preference key', function() {

@@ -63,6 +63,7 @@ ZoteroCitationCounts = {
         name: "Semantic Scholar",
         useDoi: true,
         useArxiv: true,
+        useTitleSearch: true,
         methods: {
           urlBuilder: this._semanticScholarUrl,
           responseCallback: this._semanticScholarCallback,
@@ -308,6 +309,7 @@ ZoteroCitationCounts = {
    * Start citation count retrieval operation
    */
   updateItems: async function (itemsRaw, api) {
+    this._log(`Entering updateItems for API: ${api ? api.name : 'Unknown'}. Number of raw items: ${itemsRaw ? itemsRaw.length : 0}`);
     const items = itemsRaw.filter((item) => !item.isFeedItem);
     if (!items.length) return;
 
@@ -344,7 +346,7 @@ ZoteroCitationCounts = {
   _updateItem: async function (
     currentItemIndex,
     items,
-    api,
+    api, // This is an object from the APIs array
     progressWindow,
     progressWindowItems
   ) {
@@ -352,7 +354,7 @@ ZoteroCitationCounts = {
     if (currentItemIndex >= items.length) {
       const headlineFinished = await this.l10n.formatValue(
         "citationcounts-progresswindow-finished-headline",
-        { api: api.name }
+        { api: api.name } // api.name is correct here
       );
       progressWindow.changeHeadline(headlineFinished);
       progressWindow.startCloseTimer(5000);
@@ -365,11 +367,12 @@ ZoteroCitationCounts = {
     try {
       const [count, source] = await this._retrieveCitationCount(
         item,
-        api.name,
-        api.useDoi,
-        api.useArxiv,
+        api.name, // Pass the API name
+        api.useDoi, // Pass DOI preference
+        api.useArxiv, // Pass ArXiv preference
         api.methods.urlBuilder,
-        api.methods.responseCallback
+        api.methods.responseCallback,
+        api.useTitleSearch // Pass title search preference
       );
 
       this._setCitationCount(item, source, count);
@@ -540,16 +543,20 @@ ZoteroCitationCounts = {
     useDoi,
     useArxiv,
     urlFunction,
-    requestCallback
+    requestCallback,
+    useTitleSearch // New parameter based on API config
   ) {
+    this._log(`[Debug] _retrieveCitationCount: Item '${item.getField('title') || item.id}' for API '${apiName}'. useDoi: ${useDoi}, useArxiv: ${useArxiv}, useTitleSearch: ${useTitleSearch}`);
     let doiError = null;
     let arxivError = null;
     let titleError = null;
 
     // DOI Attempt
     if (useDoi) {
+      this._log("[Debug] Attempting DOI lookup.");
       try {
         const doiField = this._getDoi(item);
+        this._log(`[Debug] DOI field obtained: '${doiField}'`);
         const count = await this._sendRequest(
           urlFunction(doiField, "doi"),
           requestCallback
@@ -557,6 +564,7 @@ ZoteroCitationCounts = {
         this._log(`Successfully fetched citation count via ${apiName}/DOI for item '${item.getField('title') || item.id}'. Count: ${count}`);
         return [count, `${apiName}/DOI`];
       } catch (error) {
+        this._log(`[Debug] DOI lookup error: ${error.message}`);
         if (error.message === 'citationcounts-progresswindow-error-no-citation-count') {
           this._log(`No citation count found via ${apiName}/DOI for item '${item.getField('title') || item.id}'.`);
         }
@@ -566,8 +574,10 @@ ZoteroCitationCounts = {
 
     // ArXiv Attempt
     if (useArxiv) {
+      this._log("[Debug] Attempting ArXiv lookup.");
       try {
         const arxivField = this._getArxiv(item);
+        this._log(`[Debug] ArXiv field obtained: '${arxivField}'`);
         const count = await this._sendRequest(
           urlFunction(arxivField, "arxiv"),
           requestCallback
@@ -575,6 +585,7 @@ ZoteroCitationCounts = {
         this._log(`Successfully fetched citation count via ${apiName}/arXiv for item '${item.getField('title') || item.id}'. Count: ${count}`);
         return [count, `${apiName}/arXiv`];
       } catch (error) {
+        this._log(`[Debug] ArXiv lookup error: ${error.message}`);
         if (error.message === 'citationcounts-progresswindow-error-no-citation-count') {
           this._log(`No citation count found via ${apiName}/arXiv for item '${item.getField('title') || item.id}'.`);
         }
@@ -582,28 +593,39 @@ ZoteroCitationCounts = {
       }
     }
 
-    // NASA ADS Title Search Attempt
-    if (apiName === "NASA ADS") {
-      // Proceed if DOI/arXiv attempts didn't return or if their errors are "not found" types.
-      // Critical errors from DOI/arXiv attempts will be prioritized in the error handling below.
-      const metadata = this._getItemMetadataForAdsQuery(item);
-      if (metadata && metadata.title && (metadata.author || metadata.year)) {
+    // Generic Title Search Attempt (e.g., for NASA ADS, Semantic Scholar if enabled)
+    if (useTitleSearch) {
+      this._log("[Debug] Attempting Title search.");
+      const metadata = this._getItemMetadataForAdsQuery(item); // Using existing function
+      this._log(`[Debug] Metadata for title search: ${JSON.stringify(metadata)}`);
+      const isMetadataSufficient = metadata && metadata.title && (metadata.author || metadata.year);
+      this._log(`[Debug] Metadata sufficient for title search: ${isMetadataSufficient}`);
+
+      if (isMetadataSufficient) {
         try {
           const count = await this._sendRequest(
-            urlFunction(metadata, "title_author_year"),
+            urlFunction(metadata, "title_author_year"), // urlFunction will build the correct URL
             requestCallback
           );
           this._log(`Successfully fetched citation count via ${apiName}/Title for item '${item.getField('title') || item.id}'. Count: ${count}`);
           return [count, `${apiName}/Title`];
         } catch (error) {
+          this._log(`[Debug] Title search lookup error: ${error.message}`);
           if (error.message === 'citationcounts-progresswindow-error-no-citation-count') {
             this._log(`No citation count found via ${apiName}/Title for item '${item.getField('title') || item.id}'.`);
           }
-          titleError = error;
+          // Prioritize more critical errors (like API key issues from _sendRequest) 
+          // over "no-citation-count" or "insufficient-metadata".
+          if (!titleError || 
+              (titleError.message === 'citationcounts-progresswindow-error-no-citation-count' && error.message !== 'citationcounts-progresswindow-error-no-citation-count') ||
+              (titleError.message === 'citationcounts-progresswindow-error-insufficient-metadata-for-title-search' && error.message !== 'citationcounts-progresswindow-error-insufficient-metadata-for-title-search')) {
+            titleError = error;
+          }
         }
       } else {
-        // Only set this error if no other more critical error (like API key) has already occurred for title.
+        // Set insufficient metadata error only if no more critical error (e.g. API key from a previous title attempt) has been set.
         if (!titleError) { 
+          this._log(`Insufficient metadata for title search for item '${item.getField('title') || item.id}' using ${apiName}.`);
           titleError = new Error("citationcounts-progresswindow-error-insufficient-metadata-for-title-search");
         }
       }
@@ -611,94 +633,138 @@ ZoteroCitationCounts = {
 
     // Final Error Handling
 
-    // Prioritize critical errors (API key, bad response, etc.) over "not found" errors.
-    if (doiError && doiError.message !== "citationcounts-progresswindow-error-no-doi") {
-      this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${doiError.message}`);
-      throw doiError;
+    // Prioritize critical errors (API key, bad response, etc.) over "not found" or "insufficient metadata" errors.
+    // A critical error from DOI attempt takes precedence.
+    if (doiError && 
+        doiError.message !== "citationcounts-progresswindow-error-no-doi" && 
+        doiError.message !== "citationcounts-progresswindow-error-no-citation-count") {
+        this._log(`[Debug] Final error to be thrown: ${doiError.message}`);
+        this._log(`Critical DOI error for ${apiName} for item '${item.getField('title') || item.id}': ${doiError.message}`);
+        throw doiError;
     }
-    if (arxivError && arxivError.message !== "citationcounts-progresswindow-error-no-arxiv") {
-      this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${arxivError.message}`);
-      throw arxivError;
+    // A critical error from ArXiv attempt takes next precedence.
+    if (arxivError && 
+        arxivError.message !== "citationcounts-progresswindow-error-no-arxiv" && 
+        arxivError.message !== "citationcounts-progresswindow-error-no-citation-count") {
+        this._log(`[Debug] Final error to be thrown: ${arxivError.message}`);
+        this._log(`Critical ArXiv error for ${apiName} for item '${item.getField('title') || item.id}': ${arxivError.message}`);
+        throw arxivError;
     }
-    // For titleError, "no-citation-count" is a valid "not found" type error from ADS, so don't treat it as critical here.
-    // "insufficient-metadata" is also not critical in the same way as an API key error.
+    // A critical error from Title attempt takes next precedence.
+    // (Includes API key errors, bad API responses, etc. from _sendRequest)
     if (titleError && 
         titleError.message !== "citationcounts-progresswindow-error-no-citation-count" &&
         titleError.message !== "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
-      this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${titleError.message}`);
-      throw titleError;
+        this._log(`[Debug] Final error to be thrown: ${titleError.message}`);
+        this._log(`Critical Title Search error for ${apiName} for item '${item.getField('title') || item.id}': ${titleError.message}`);
+        throw titleError;
     }
     
-    // If we're here, all attempts failed or resulted in "not found" or "insufficient metadata" errors.
-    if (apiName === "NASA ADS") {
-      // Check if all avenues for NASA ADS are exhausted or resulted in non-critical errors.
-      const doiFailedOrNotUsed = !useDoi || (doiError && doiError.message === "citationcounts-progresswindow-error-no-doi");
-      const arxivFailedOrNotUsed = !useArxiv || (arxivError && arxivError.message === "citationcounts-progresswindow-error-no-arxiv");
-      // titleError here could be "no-citation-count", "insufficient-metadata", or a critical one already thrown.
-      // We are interested if a title search was attempted and failed non-critically, or was not possible.
-      const titleSearchFailedOrNotPossible = titleError !== null;
+    // If we are here, all recorded errors are of "not found", "no id", or "insufficient metadata" type.
+    // Now, determine the most appropriate "not found" or "cannot attempt" error to throw based on what was attempted.
 
+    const doiAttempted = useDoi;
+    const arxivAttempted = useArxiv;
+    const titleSearchAttempted = useTitleSearch;
 
-      if (doiFailedOrNotUsed && arxivFailedOrNotUsed && titleSearchFailedOrNotPossible) {
-         // If titleError is "insufficient-metadata", that's the most specific.
+    const doiFailedNonCritically = doiError && (doiError.message === "citationcounts-progresswindow-error-no-doi" || doiError.message === "citationcounts-progresswindow-error-no-citation-count");
+    const arxivFailedNonCritically = arxivError && (arxivError.message === "citationcounts-progresswindow-error-no-arxiv" || arxivError.message === "citationcounts-progresswindow-error-no-citation-count");
+    const titleFailedNonCritically = titleError && (titleError.message === "citationcounts-progresswindow-error-no-citation-count" || titleError.message === "citationcounts-progresswindow-error-insufficient-metadata-for-title-search");
+
+    // Case 1: All attempted methods failed non-critically.
+    let allApplicableMethodsFailedNonCritically = true;
+    if (doiAttempted && !doiFailedNonCritically) allApplicableMethodsFailedNonCritically = false;
+    if (arxivAttempted && !arxivFailedNonCritically) allApplicableMethodsFailedNonCritically = false;
+    if (titleSearchAttempted && !titleFailedNonCritically) allApplicableMethodsFailedNonCritically = false;
+    
+    if (allApplicableMethodsFailedNonCritically && (doiAttempted || arxivAttempted || titleSearchAttempted)) {
+      // Special handling for NASA ADS "no results"
+      if (apiName === "NASA ADS" && titleSearchAttempted) { // NASA ADS uses title search as part of its core strategy
+        // If title search itself was due to insufficient metadata, that's the most specific error.
         if (titleError && titleError.message === "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
-          this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${titleError.message}`);
-          throw titleError;
+            this._log(`[Debug] Final error to be thrown: ${titleError.message}`);
+            this._log(`NASA ADS: All attempts failed for item '${item.getField('title') || item.id}'. Final error: ${titleError.message}`);
+            throw titleError;
         }
-        // If title search resulted in "no-citation-count" after DOI/arXiv also yielded nothing of substance
-        if (titleError && titleError.message === "citationcounts-progresswindow-error-no-citation-count") {
-            const finalError = new Error("citationcounts-progresswindow-error-nasaads-no-results");
-            this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${finalError.message}`);
-            throw finalError;
-        }
-        // If title search itself had a critical error, it would have been thrown above.
-        // If titleError is null here, it means title search was not attempted (e.g. not NASA ADS, or metadata was missing but didn't set titleError - fixed above)
-        // or it was successful (which means we wouldn't be in this error handling block).
-        // So, if titleError is null but doi/arxiv failed, this implies title search was not relevant or didn't even get to set an error.
-        // This case should ideally be covered by "insufficient metadata" or the general "no-doi-or-arxiv" if title wasn't applicable.
-        // Given the logic, if titleSearchFailedOrNotPossible is true, titleError is not null.
-        const finalErrorNasaNoResults = new Error("citationcounts-progresswindow-error-nasaads-no-results");
-        this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${finalErrorNasaNoResults.message}`);
-        throw finalErrorNasaNoResults;
+        const finalNasaError = new Error("citationcounts-progresswindow-error-nasaads-no-results");
+        this._log(`[Debug] Final error to be thrown: ${finalNasaError.message}`);
+        this._log(`NASA ADS: No results from any method for item '${item.getField('title') || item.id}'. Error: ${finalNasaError.message}`);
+        throw finalNasaError;
       }
-      if (titleError) { // If title search failed (e.g. no-citation-count, insufficient-metadata)
-        this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${titleError.message}`);
-        throw titleError; 
+
+      // For other APIs (like Semantic Scholar now) or if NASA ADS didn't use title search for some reason
+      if (titleSearchAttempted && titleError && titleError.message === "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
+        // If title search couldn't be performed due to metadata, and DOI/ArXiv also failed non-critically
+        this._log(`[Debug] Final error to be thrown: ${titleError.message}`);
+        this._log(`All attempts for ${apiName} failed for item '${item.getField('title') || item.id}'. Final error: ${titleError.message}`);
+        throw titleError; // "insufficient-metadata..."
       }
+      
+      // Generic "no results from any attempt"
+      const finalErrorAllAttempts = new Error("citationcounts-progresswindow-error-no-results-all-attempts");
+      this._log(`[Debug] Final error to be thrown: ${finalErrorAllAttempts.message}`);
+      this._log(`${apiName}: No citation count found after all attempts (DOI, ArXiv, Title if applicable) for item '${item.getField('title') || item.id}'. Error: ${finalErrorAllAttempts.message}`);
+      throw finalErrorAllAttempts;
     }
 
-    // General "Not Found" type errors for any API
-    if (useDoi && doiError && useArxiv && arxivError) { // Both attempted, both are "no-id" type
+    // Case 2: Some attempts failed non-critically, others were not applicable or didn't set an error (should not happen if logic is correct).
+    // Prioritize the "most specific" non-critical error.
+    // If title search failed due to insufficient metadata, and it was the "last resort" or only resort.
+    if (titleSearchAttempted && titleError && titleError.message === "citationcounts-progresswindow-error-insufficient-metadata-for-title-search") {
+        if ((!doiAttempted || doiFailedNonCritically) && (!arxivAttempted || arxivFailedNonCritically)) {
+            this._log(`[Debug] Final error to be thrown: ${titleError.message}`);
+            this._log(`${apiName}: Title search failed due to insufficient metadata for item '${item.getField('title') || item.id}', other methods also failed or not applicable. Error: ${titleError.message}`);
+            throw titleError;
+        }
+    }
+    
+    // If title search yielded "no citation count" and other methods also failed non-critically or were not applicable.
+    if (titleSearchAttempted && titleError && titleError.message === "citationcounts-progresswindow-error-no-citation-count") {
+        if ((!doiAttempted || doiFailedNonCritically) && (!arxivAttempted || arxivFailedNonCritically)) {
+            this._log(`[Debug] Final error to be thrown: ${titleError.message}`);
+            this._log(`${apiName}: No citation count from title search for item '${item.getField('title') || item.id}', other methods also failed or not applicable. Error: ${titleError.message}`);
+            throw titleError; // This is "no-citation-count"
+        }
+    }
+
+    // Fallback to DOI/ArXiv specific "not found" errors if title search was not attempted or did not set an error.
+    if (doiAttempted && doiFailedNonCritically && arxivAttempted && arxivFailedNonCritically) {
       const finalErrorNoDoiOrArxiv = new Error("citationcounts-progresswindow-error-no-doi-or-arxiv");
-      this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${finalErrorNoDoiOrArxiv.message}`);
+      this._log(`[Debug] Final error to be thrown: ${finalErrorNoDoiOrArxiv.message}`);
+      this._log(`${apiName}: Both DOI and ArXiv lookups failed for item '${item.getField('title') || item.id}'. Error: ${finalErrorNoDoiOrArxiv.message}`);
       throw finalErrorNoDoiOrArxiv;
     }
-    if (useDoi && doiError) { // Only DOI attempted (or arXiv not attempted/successful) and DOI is "no-id"
-      this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${doiError.message}`);
-      throw doiError;
+    if (doiAttempted && doiFailedNonCritically) {
+      this._log(`[Debug] Final error to be thrown: ${doiError.message}`);
+      this._log(`${apiName}: DOI lookup failed for item '${item.getField('title') || item.id}'. Error: ${doiError.message}`);
+      throw doiError; // "no-doi" or "no-citation-count" from DOI
     }
-    if (useArxiv && arxivError) { // Only arXiv attempted (or DOI not attempted/successful) and arXiv is "no-id"
-      this._log(`Failed to retrieve citation count for item '${item.getField('title') || item.id}' after all attempts. Error: ${arxivError.message}`);
-      throw arxivError;
+    if (arxivAttempted && arxivFailedNonCritically) {
+      this._log(`[Debug] Final error to be thrown: ${arxivError.message}`);
+      this._log(`${apiName}: ArXiv lookup failed for item '${item.getField('title') || item.id}'. Error: ${arxivError.message}`);
+      throw arxivError; // "no-arxiv" or "no-citation-count" from ArXiv
     }
 
-    // Fallback if no specific error was thrown. This indicates an unhandled case or an API configured with no valid ID types.
-    // If an API is configured (e.g. useDoi=true) but no error was set (e.g. _getDoi didn't throw, _sendRequest didn't throw but we still didn't return)
-    // this is an internal logic issue.
-    if (useDoi || useArxiv || apiName === "NASA ADS") {
-      // If any retrieval method was supposed to be active but we reached here without throwing.
-      // This might happen if e.g. useDoi is true, but doiError is null (somehow).
-      // This path should ideally not be reached if logic is perfect.
+    // Fallback for unhandled cases or configuration issues.
+    let attemptedMethods = [];
+    if (doiAttempted) attemptedMethods.push("DOI");
+    if (arxivAttempted) attemptedMethods.push("ArXiv");
+    if (titleSearchAttempted) attemptedMethods.push("Title");
+
+    if (attemptedMethods.length > 0) {
+      // This means at least one method was configured, but we didn't return success and didn't throw a specific error above.
+      // This might indicate an error in the logic (e.g., a method was attempted, didn't succeed, but its error variable was not set).
       const unknownError = new Error("citationcounts-progresswindow-error-unknown");
-      this._log(`Internal error: Reached end of _retrieveCitationCount for ${apiName} without success or specific error. DOI error: ${doiError}, ArXiv error: ${arxivError}, Title error: ${titleError}. Surfacing as: ${unknownError.message}`);
-      throw unknownError; // A generic "unknown" or "internal"
+      this._log(`[Debug] Final error to be thrown: ${unknownError.message}`);
+      this._log(`Internal error: Reached end of _retrieveCitationCount for ${apiName} for item '${item.getField('title') || item.id}' with methods (${attemptedMethods.join(', ')}) enabled but no success or specific error. DOI error: ${doiError}, ArXiv error: ${arxivError}, Title error: ${titleError}. Surfacing as: ${unknownError.message}`);
+      throw unknownError;
+    } else {
+      // This means the API was called with no retrieval methods enabled (e.g. useDoi=false, useArxiv=false, useTitleSearch=false).
+      const internalError = new Error("citationcounts-internal-error-no-retrieval-methods");
+      this._log(`[Debug] Final error to be thrown: ${internalError.message}`);
+      this._log(`Configuration error: _retrieveCitationCount called for ${apiName} for item '${item.getField('title') || item.id}' with no valid ID types (DOI, ArXiv, TitleSearch) enabled. Error: ${internalError.message}`);
+      throw internalError;
     }
-    
-    // If the API was somehow called with no valid types (e.g. useDoi=false, useArxiv=false, and not NASA ADS)
-    // This is an internal configuration error.
-    const internalError = new Error("citationcounts-internal-error");
-    this._log(`Configuration error: _retrieveCitationCount called for ${apiName} with no valid ID types enabled. Error: ${internalError.message}`);
-    throw internalError; // Or a more specific "misconfigured API" error
   },
 
   /////////////////////////////////////////////
@@ -722,16 +788,68 @@ ZoteroCitationCounts = {
   },
 
   _semanticScholarUrl: function (id, type) {
-    const prefix = type === "doi" ? "" : "arXiv:";
-    return `https://api.semanticscholar.org/graph/v1/paper/${prefix}${id}?fields=citationCount`;
+    if (type === "title_author_year") {
+      let queryString = "";
+      if (id && id.title) {
+        queryString += `title:${encodeURIComponent(id.title)}`;
+      }
+      if (id && id.author) {
+        queryString += `${queryString ? "+" : ""}author:${encodeURIComponent(
+          id.author
+        )}`;
+      }
+      if (id && id.year) {
+        queryString += `${queryString ? "+" : ""}year:${encodeURIComponent(
+          id.year
+        )}`;
+      }
+      return `https://api.semanticscholar.org/graph/v1/paper/search?query=${queryString}&fields=citationCount,externalIds`;
+    } else {
+      // Existing logic for DOI/ArXiv
+      if (type === "doi") {
+        return `https://api.semanticscholar.org/graph/v1/paper/${encodeURIComponent(id)}?fields=citationCount`;
+      } else { // arxiv
+        return `https://api.semanticscholar.org/graph/v1/paper/arXiv:${encodeURIComponent(id)}?fields=citationCount`;
+      }
+    }
   },
 
   // The callback can be async if we want.
   _semanticScholarCallback: async function (response) {
-    count = response["citationCount"];
+    let count;
 
     // throttle Semantic Scholar so we don't reach limit.
+    // This needs to be done before any return, regardless of path.
     await new Promise((r) => setTimeout(r, 3000));
+
+    if (response.data) {
+      // Handle search results
+      if (response.data.length > 1) {
+        this._log(
+          `Semantic Scholar query returned ${response.data.length} results. Using the first one.`
+        );
+      }
+      if (response.data.length > 0 && response.data[0].citationCount !== null && response.data[0].citationCount !== undefined) {
+        count = response.data[0].citationCount;
+        // Optionally, one could also extract and use response.data[0].externalIds here if needed later.
+      } else {
+        this._log(
+          "Semantic Scholar search response did not contain expected citationCount in the first result or no results found. Response: " +
+            JSON.stringify(response)
+        );
+        return null; // Will be caught by parseInt validation in _sendRequest
+      }
+    } else if (response.citationCount !== null && response.citationCount !== undefined) {
+      // Handle direct DOI/ArXiv lookup
+      count = response.citationCount;
+    } else {
+      this._log(
+        "Semantic Scholar response did not contain expected citationCount. Response: " +
+          JSON.stringify(response)
+      );
+      return null; // Will be caught by parseInt validation in _sendRequest
+    }
+
     return count;
   },
 
