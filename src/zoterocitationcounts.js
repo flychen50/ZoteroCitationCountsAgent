@@ -309,7 +309,7 @@ ZoteroCitationCounts = {
    * Start citation count retrieval operation
    */
   updateItems: async function (itemsRaw, api) {
-    this._log(`Entering updateItems for API: ${api ? api.name : 'Unknown'}. Number of raw items: ${itemsRaw ? itemsRaw.length : 0}`);
+    this._log(`Entering updateItems for API: ${api ? api.name : 'Unknown'}. Number of raw items: ${itemsRaw ? itemsRaw.length : 0}. API Object Name: ${api ? api.name : 'N/A'}`);
     const items = itemsRaw.filter((item) => !item.isFeedItem);
     if (!items.length) return;
 
@@ -402,16 +402,28 @@ ZoteroCitationCounts = {
    * Ref: https://www.zotero.org/support/kb/item_types_and_fields#citing_fields_from_extra
    */
   _setCitationCount: function (item, source, count) {
+    this._log(`[Debug] _setCitationCount: Entered for item '${item.getField('title') || item.id}', source: '${source}', count: ${count}`);
     const pattern = /^Citations \(${source}\):|^\d+ citations \(${source}\)/i;
-    const extraFieldLines = (item.getField("extra") || "")
+    const extraFieldLinesInitial = (item.getField("extra") || "")
       .split("\n")
       .filter((line) => !pattern.test(line));
+    this._log(`[Debug] _setCitationCount: Initial extraFieldLines (after filter): ${JSON.stringify(extraFieldLinesInitial)}`);
 
     const today = new Date().toISOString().split("T")[0];
-    extraFieldLines.unshift(`${count} citations (${source}) [${today}]`);
+    const lineToUnshift = `${count} citations (${source}) [${today}]`;
+    this._log(`[Debug] _setCitationCount: Line to unshift: '${lineToUnshift}'`);
+    
+    // Create a new array for modification to avoid issues with logging the same reference if unshift modifies in place and logging is async.
+    const extraFieldLines = [...extraFieldLinesInitial];
+    extraFieldLines.unshift(lineToUnshift);
+    this._log(`[Debug] _setCitationCount: extraFieldLines after unshift: ${JSON.stringify(extraFieldLines)}`);
 
-    item.setField("extra", extraFieldLines.join("\n"));
+    const finalExtraString = extraFieldLines.join('\n');
+    this._log(`[Debug] _setCitationCount: Final string for setField: '${finalExtraString}'`);
+
+    item.setField("extra", finalExtraString);
     item.saveTx();
+    this._log(`[Debug] _setCitationCount: Exited for item '${item.getField('title') || item.id}'`);
   },
 
   /**
