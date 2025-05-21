@@ -1,20 +1,20 @@
 const { expect } = require('chai');
-const sinon = require('sinon');
+const sinon = require('sinon'); // Keep sinon for createSandbox
 const fs = require('fs');
 const path = require('path');
 
-// Updated Helper function
-function createMockItem(doi, extraContent = "", arxivId = null, url = null, metadata = {}) {
+// Updated Helper function to use a passed-in sandbox
+function createMockItem(sandbox, doi, extraContent = "", arxivId = null, url = null, metadata = {}) {
   const item = {
     _DOI: doi,
     _extra: extraContent,
-    _arxivId: arxivId, // Note: _getArxiv primarily uses 'url' field
+    _arxivId: arxivId, 
     _url: url || (arxivId ? `https://arxiv.org/abs/${arxivId}` : null),
-    _metadata: metadata, // Store for clarity, used in stubs
-    getField: sinon.stub(),
-    getCreators: sinon.stub(), // For author extraction
-    setField: sinon.stub(),
-    saveTx: sinon.stub().resolves(),
+    _metadata: metadata, 
+    getField: sandbox.stub(), // Use sandbox
+    getCreators: sandbox.stub(), // Use sandbox
+    setField: sandbox.stub(), // Use sandbox
+    saveTx: sandbox.stub().resolves(), // This can remain plain if not part of assertions
     isFeedItem: false,
     id: metadata.title || doi || arxivId || `item-${Math.random().toString(36).substr(2, 9)}`,
   };
@@ -33,6 +33,7 @@ function createMockItem(doi, extraContent = "", arxivId = null, url = null, meta
 
 
 describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
+  let sandbox; // Define sandbox here
   let zccCode;
   let mockZoteroPane;
   let mockProgressWindowInstance;
@@ -41,27 +42,28 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
   let originalDateToISOString;
 
   beforeEach(function() {
-    // Mock Zotero.ProgressWindow.ItemProgress first as it's a constructor used by Zotero.ProgressWindow
+    sandbox = sinon.createSandbox(); // Initialize sandbox
+
+    // Mock Zotero.ProgressWindow.ItemProgress first
     mockItemProgressInstance = {
-      setIcon: sinon.stub(),
-      setText: sinon.stub(),
-      setProgress: sinon.stub(),
-      setError: sinon.stub(),
-      // Mock any other methods that might be called on an ItemProgress instance
+      setIcon: sandbox.stub(), // Use sandbox
+      setText: sandbox.stub(), // Use sandbox
+      setProgress: sandbox.stub(), // Use sandbox
+      setError: sandbox.stub(), // Use sandbox
     };
-    const MockItemProgressConstructor = sinon.stub().returns(mockItemProgressInstance);
+    const MockItemProgressConstructor = sandbox.stub().returns(mockItemProgressInstance); // Use sandbox
 
     // Mock Zotero.ProgressWindow
     mockProgressWindowInstance = {
-      changeHeadline: sinon.stub(),
-      show: sinon.stub(),
-      ItemProgress: MockItemProgressConstructor, // Assign the mocked constructor
-      startCloseTimer: sinon.stub(),
+      changeHeadline: sandbox.stub(), // Use sandbox
+      show: sandbox.stub(), // Use sandbox
+      ItemProgress: MockItemProgressConstructor, 
+      startCloseTimer: sandbox.stub(), // Use sandbox
     };
-    const MockProgressWindowConstructor = sinon.stub().returns(mockProgressWindowInstance);
+    const MockProgressWindowConstructor = sandbox.stub().returns(mockProgressWindowInstance); // Use sandbox
 
     // Mock Zotero pane
-    mockGetSelectedItems = sinon.stub();
+    mockGetSelectedItems = sandbox.stub(); // Use sandbox
     mockZoteroPane = {
       getSelectedItems: mockGetSelectedItems,
     };
@@ -69,65 +71,75 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     // Mock global Zotero object
     global.Zotero = {
       Prefs: {
-        get: sinon.stub(),
-        set: sinon.stub(),
+        get: sandbox.stub(), // Use sandbox
+        set: sandbox.stub(), // Use sandbox
       },
-      debug: sinon.stub(), // For ZoteroCitationCounts._log
+      debug: sandbox.stub(), // Use sandbox
       ProgressWindow: MockProgressWindowConstructor,
-      getActiveZoteroPane: sinon.stub().returns(mockZoteroPane),
-      // Mock Localization (L10n)
-      // ZoteroCitationCounts.l10n is initialized with `new Localization(["citation-counts.ftl"]);`
-      // We need to mock the constructor and its methods if used, or mock the instance directly after script load.
-      Localization: sinon.stub().returnsThis(), // Make constructor return 'this'
-      // Then mock methods on 'this' or on the instance if it's assigned (e.g., Zotero.L10n.formatValue)
-      // For simplicity, we'll mock formatValue on ZoteroCitationCounts.l10n after script load.
-      
-      // other necessary Zotero mocks
-      hiDPI: false, // For ZoteroCitationCounts.icon
+      getActiveZoteroPane: sandbox.stub().returns(mockZoteroPane), // Use sandbox
+      // Zotero.Localization itself is not used by the script, global.Localization is.
+      hiDPI: false,
+      File: { 
+        exists: sandbox.stub().returns(true), // Use sandbox
+        getContentsAsync: sandbox.stub().resolves(""),  // Use sandbox
+      },
+      getMainWindow: sandbox.stub().returns({ // Use sandbox
+        MozXULElement: {
+            insertFTLIfNeeded: sandbox.stub(), // Use sandbox
+        }
+      }),
     };
     
-    // Mock global.fetch
-    sinon.stub(global, 'fetch');
+    // Mock global.fetch using sandbox
+    global.fetch = sandbox.stub();
 
     // Mock Date.prototype.toISOString to control date strings
     const constantDate = new Date('2023-01-01T12:00:00.000Z');
-    originalDateToISOString = Date.prototype.toISOString;
-    Date.prototype.toISOString = sinon.stub().returns(constantDate.toISOString());
+    originalDateToISOString = Date.prototype.toISOString; // Store original
+    Date.prototype.toISOString = sandbox.stub().returns(constantDate.toISOString()); // Use sandbox
+
+    // Define global.Localization before loading the script
+    global.Localization = sandbox.stub().returns({ // Use sandbox
+        formatValue: sandbox.stub().resolvesArg(0) 
+      });
 
 
     // Load ZoteroCitationCounts script
     if (!zccCode) {
       zccCode = fs.readFileSync(path.join(__dirname, '../../src/zoterocitationcounts.js'), 'utf-8');
     }
-    // Inject Zotero mock into the script's scope
-    new Function('Zotero', zccCode)(global.Zotero);
-    
-    // Now that ZoteroCitationCounts is loaded and has its l10n instance, mock its formatValue
-    if (global.ZoteroCitationCounts && global.ZoteroCitationCounts.l10n) {
-      global.ZoteroCitationCounts.l10n.formatValue = sinon.stub().resolvesArg(0);
-    } else {
-      // Fallback if l10n is not on ZoteroCitationCounts but on Zotero.L10n instance
-      global.Zotero.L10n = { // Assuming L10n might be used as Zotero.L10n
-          formatValue: sinon.stub().resolvesArg(0)
-      };
-    }
-    // The init function is called during script load. APIs should be populated.
-    // Ensure ZoteroCitationCounts.init has been called
-    if (global.ZoteroCitationCounts && !global.ZoteroCitationCounts._initialized) {
-        global.ZoteroCitationCounts.init({ id: 'test-id', version: 'test-version', rootURI: 'test-uri/'});
+    // Inject Zotero mock and global Localization into the script's scope
+    new Function('Zotero', 'Localization', zccCode)(global.Zotero, global.Localization);
+        
+    // Initialize ZoteroCitationCounts (now global)
+    const ftlPath = path.resolve(__dirname, '../../src/citation-counts.ftl');
+    if (!fs.existsSync(ftlPath)) {
+        fs.writeFileSync(ftlPath, "# Dummy FTL file for testing\n");
     }
 
+    global.ZoteroCitationCounts.init({ 
+      id: 'test-id', 
+      version: 'test-version', 
+      rootURI: 'test-uri/'
+    });
+
+    // The l10n instance on ZoteroCitationCounts is now created with the mocked global.Localization.
+    // Its formatValue method will be the stub we defined on global.Localization's return object.
+    // No need to re-assign ZoteroCitationCounts.l10n.formatValue here.
 
   });
 
   afterEach(function() {
-    sinon.restore(); // Restores all sinon stubs and mocks
-    if (global.fetch && global.fetch.restore) {
-        global.fetch.restore(); // Specifically restore fetch if it was stubbed
-    }
+    sandbox.restore(); // Use sandbox.restore()
     Date.prototype.toISOString = originalDateToISOString; // Restore original toISOString
     delete global.Zotero;
     delete global.ZoteroCitationCounts; // Clean up global scope
+    delete global.Localization; // Clean up global Localization
+    // No need to delete global.fetch if it's restored by sinon.restore()
+    // const ftlPath = path.resolve(__dirname, '../../src/citation-counts.ftl');
+    // if (fs.existsSync(ftlPath) && fs.readFileSync(ftlPath, 'utf8').startsWith("# Dummy FTL file for testing")) {
+    //     fs.unlinkSync(ftlPath);
+    // }
   });
 
   // Test Scenarios will go here
@@ -142,7 +154,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 1: Successful fetch and update for NASA ADS (DOI)', async function() {
-      const mockItem = createMockItem('10.1234/test.doi');
+      const mockItem = createMockItem(sandbox, '10.1234/test.doi'); // Pass sandbox from the describe scope
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -168,6 +180,8 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(mockItemProgressInstance.setIcon.calledWith(sinon.match(/tick/))).to.be.true; // Or specific icon path
       expect(mockItemProgressInstance.setProgress.calledWith(100)).to.be.true;
 
+      // Check for the initial debug log
+      sinon.assert.calledWithMatch(global.Zotero.debug, "Zotero Citation Counts: Entering updateItems for API: NASA ADS. Number of raw items: 1");
       sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/DOI for item '${mockItem.id}'. Count: 42`);
 
       // Verify l10n calls for progress window headlines
@@ -176,7 +190,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 2: NASA ADS API key error (401)', async function() {
-      const mockItem = createMockItem('10.1234/another.doi');
+      const mockItem = createMockItem(sandbox, '10.1234/another.doi'); // Pass sandbox
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('WRONG_KEY');
@@ -216,7 +230,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 3: No DOI, No arXiv, No Title for NASA ADS (Insufficient Metadata)', async function() {
-      const mockItem = createMockItem(null, "", null, null, { title: null, authors: [], year: null }); // No identifiers
+      const mockItem = createMockItem(sandbox, null, "", null, null, { title: null, authors: [], year: null }); // Pass sandbox
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -239,11 +253,11 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 4: Successful Title Search for NASA ADS', async function() {
-      const mockItem = createMockItem(null, "", null, null, { 
+      const mockItem = createMockItem(sandbox, null, "", null, null, {  // Pass sandbox
         title: "My Test Paper", 
         authors: [{lastName: "Author"}], 
         year: "2023" 
-      }); // item.id will be "My Test Paper"
+      }); 
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -270,7 +284,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 5: Title Search - No Results for NASA ADS (triggers "no-citation-count")', async function() {
-      const mockItem = createMockItem(null, "", null, null, { title: "Unknown Paper" }); // item.id will be "Unknown Paper"
+      const mockItem = createMockItem(sandbox, null, "", null, null, { title: "Unknown Paper" }); // Pass sandbox
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -301,7 +315,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
     
     it('Scenario 6: Prioritization - DOI Search Preferred over Title Search for NASA ADS', async function() {
-      const mockItem = createMockItem('10.5555/doi-wins', "", null, null, {
+      const mockItem = createMockItem(sandbox, '10.5555/doi-wins', "", null, null, { // Pass sandbox
         title: "Title Ignored",
         authors: [{lastName: "Author"}],
         year: "2020"
@@ -335,11 +349,11 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 7: Prioritization - arXiv Search Preferred over Title Search (No DOI) for NASA ADS', async function() {
-      const mockItem = createMockItem(null, "", "2301.00001", `https://arxiv.org/abs/2301.00001`, { // arXiv ID, no DOI
+      const mockItem = createMockItem(sandbox, null, "", "2301.00001", `https://arxiv.org/abs/2301.00001`, { // Pass sandbox
         title: "Title Also Ignored",
         authors: [{lastName: "SomeAuthor"}],
         year: "2023"
-      }); // item.id will be "2301.00001"
+      }); 
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -368,7 +382,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 8: No Citation Count Found via DOI for NASA ADS', async function() {
-      const mockItem = createMockItem('10.9999/nodoiresult');
+      const mockItem = createMockItem(sandbox, '10.9999/nodoiresult'); // Pass sandbox
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
@@ -392,7 +406,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
     });
 
     it('Scenario 9: No Citation Count Found via arXiv for NASA ADS', async function() {
-      const mockItem = createMockItem(null, "", "2301.99999", "https://arxiv.org/abs/2301.99999");
+      const mockItem = createMockItem(sandbox, null, "", "2301.99999", "https://arxiv.org/abs/2301.99999"); // Pass sandbox
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');

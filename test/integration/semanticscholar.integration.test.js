@@ -3,33 +3,41 @@ const sinon = require("sinon");
 const fs = require("fs");
 const path = require("path");
 
-// Load the ZoteroCitationCounts module
-const ZoteroCitationCounts = require("../../src/zoterocitationcounts.js");
+// const ZoteroCitationCounts = require("../../src/zoterocitationcounts.js"); // Removed require
+let zccCode; // To store script content
 
 describe("Semantic Scholar Integration Tests", () => {
   let sandbox;
-  let mockZotero;
+  let mockZotero; // Zotero will be global
   let mockItem;
   let semanticScholarAPI;
   const today = "2024-07-27"; // Fixed date for consistent testing
 
   // Helper function to create a mock Zotero item
-  const createMockItem = (props) => {
+  const createMockItem = (sandbox, props) => { // Added sandbox argument
     const item = {
       id: props.id || 1,
       _changed: false,
       isFeedItem: false,
-      getField: sinon.stub(),
-      setField: sinon.stub().callsFake(function() { item._changed = true; }),
-      saveTx: sinon.stub().resolves(),
-      getCreators: sinon.stub().returns(props.creators || []),
+      // Stubs will be created using the sandbox
     };
-    item.getField.withArgs("title").returns(props.title || "");
-    item.getField.withArgs("DOI").returns(props.DOI || "");
-    item.getField.withArgs("url").returns(props.url || ""); // For arXiv
-    item.getField.withArgs("date").returns(props.date || "");
-    item.getField.withArgs("year").returns(props.year || ""); // For _getItemMetadataForAdsQuery
-    item.getField.withArgs("extra").returns(props.extra || "");
+    item.getField = sandbox.stub();
+    item.setField = sandbox.stub().callsFake(function() { item._changed = true; });
+    item.saveTx = sandbox.stub().resolves();
+    item.getCreators = sandbox.stub().returns(props.creators || []);
+
+    item.getField.withArgs("title").returns(props.title || null); // Use null
+    item.getField.withArgs("DOI").returns(props.DOI || null); // Use null
+    item.getField.withArgs("url").returns(props.url || null); // For arXiv, use null
+    item.getField.withArgs("date").returns(props.date || null); // Use null
+    item.getField.withArgs("year").returns(props.year || null); // For _getItemMetadataForAdsQuery, use null
+    item.getField.withArgs("extra").returns(props.extra || null); // Use null
+    // Add other common fields if necessary, defaulting to null
+    item.getField.withArgs("seriesTitle").returns(props.seriesTitle || null);
+    item.getField.withArgs("publicationTitle").returns(props.publicationTitle || null);
+    item.getField.withArgs("volume").returns(props.volume || null);
+    item.getField.withArgs("issue").returns(props.issue || null);
+    item.getField.withArgs("pages").returns(props.pages || null);
     return item;
   };
 
@@ -98,7 +106,21 @@ describe("Semantic Scholar Integration Tests", () => {
     // Control date
     sandbox.stub(Date.prototype, 'toISOString').returns(`${today}T12:00:00.000Z`);
 
-    // Initialize ZoteroCitationCounts
+    // Define global.Localization before loading the script
+    global.Localization = sandbox.stub().returns({
+        formatValue: sandbox.stub().resolvesArg(0) // Simplified stub
+      });
+
+    // Read the script content once
+    if (!zccCode) {
+      zccCode = fs.readFileSync(path.join(__dirname, '../../src/zoterocitationcounts.js'), 'utf-8');
+    }
+    // Execute the script content, making ZoteroCitationCounts available globally
+    // ZoteroCitationCounts.init will use the global.Localization defined above
+    new Function('Zotero', 'Localization', zccCode)(global.Zotero, global.Localization);
+
+
+    // Initialize ZoteroCitationCounts (now global)
     // Need to ensure the path to FTL is correctly handled if it's dynamic
     const ftlPath = path.resolve(__dirname, '../../src/citation-counts.ftl');
     if (!fs.existsSync(ftlPath)) {
@@ -106,7 +128,7 @@ describe("Semantic Scholar Integration Tests", () => {
         fs.writeFileSync(ftlPath, "# Dummy FTL file for testing\n");
     }
 
-    ZoteroCitationCounts.init({
+    global.ZoteroCitationCounts.init({ // Use global.ZoteroCitationCounts
       id: "zotero-citation-counts",
       version: "1.0.0",
       rootURI: "chrome://zoterocitationcounts/",
@@ -116,11 +138,11 @@ describe("Semantic Scholar Integration Tests", () => {
     // This can be tricky; for now, we assume formatValue is ready after init.
     // If l10n setup is async and causes issues, a small delay or a more robust wait might be needed.
     // Or, if l10n.formatValue is called immediately in init, mock it before init.
-    // For this setup, we'll mock it after init, assuming it's primarily used by updateItems.
-    ZoteroCitationCounts.l10n.formatValue = mockZotero.Localization().formatValue;
+    // The l10n instance on ZoteroCitationCounts is now created with the mocked global.Localization.
+    // Its formatValue method will be the stub we defined on global.Localization's return object.
+    // No need to re-assign ZoteroCitationCounts.l10n.formatValue here.
 
-
-    semanticScholarAPI = ZoteroCitationCounts.APIs.find(
+    semanticScholarAPI = global.ZoteroCitationCounts.APIs.find( // Use global.ZoteroCitationCounts
       (api) => api.key === "semanticscholar"
     );
     expect(semanticScholarAPI).to.exist;
@@ -130,6 +152,8 @@ describe("Semantic Scholar Integration Tests", () => {
     sandbox.restore();
     delete global.Zotero;
     delete global.fetch;
+    delete global.ZoteroCitationCounts; // Clean up the global
+    delete global.Localization; // Clean up global Localization
     // Clean up dummy FTL if created - be careful if it's a real file
     // const ftlPath = path.resolve(__dirname, '../../src/citation-counts.ftl');
     // if (fs.existsSync(ftlPath) && fs.readFileSync(ftlPath, 'utf8').startsWith("# Dummy FTL file for testing")) {
@@ -139,7 +163,7 @@ describe("Semantic Scholar Integration Tests", () => {
 
   describe("Semantic Scholar API Tests", () => {
     it("Scenario 1: Successful fetch and update via DOI", async () => {
-      mockItem = createMockItem({ DOI: "10.1000/xyz123" });
+      mockItem = createMockItem(sandbox, { DOI: "10.1000/xyz123" }); // Pass sandbox
       mockZotero.getActiveZoteroPane().getSelectedItems.returns([mockItem]);
 
       global.fetch.resolves({
@@ -151,7 +175,7 @@ describe("Semantic Scholar Integration Tests", () => {
         }),
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       const expectedUrl =
         "https://api.semanticscholar.org/graph/v1/paper/10.1000%2Fxyz123?fields=citationCount";
@@ -163,7 +187,7 @@ describe("Semantic Scholar Integration Tests", () => {
       const pwInstance = mockZotero.ProgressWindow();
       expect(pwInstance.changeHeadline.called).to.be.true;
       const itemProgressInstance = pwInstance.ItemProgress();
-      expect(itemProgressInstance.setIcon.calledWith(ZoteroCitationCounts.icon("tick"))).to.be.true;
+      expect(itemProgressInstance.setIcon.calledWith(global.ZoteroCitationCounts.icon("tick"))).to.be.true; // Use global.ZoteroCitationCounts
       expect(itemProgressInstance.setProgress.calledWith(100)).to.be.true;
 
       // Check for throttle - fetch should be called, then callback has await.
@@ -173,7 +197,7 @@ describe("Semantic Scholar Integration Tests", () => {
     });
 
     it("Scenario 2: Successful fetch and update via arXiv ID", async () => {
-      mockItem = createMockItem({ url: "https://arxiv.org/abs/2101.00001" });
+      mockItem = createMockItem(sandbox, { url: "https://arxiv.org/abs/2101.00001" }); // Pass sandbox
       mockZotero.getActiveZoteroPane().getSelectedItems.returns([mockItem]);
 
       global.fetch.resolves({
@@ -185,7 +209,7 @@ describe("Semantic Scholar Integration Tests", () => {
         }),
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       const expectedUrl =
         "https://api.semanticscholar.org/graph/v1/paper/arXiv:2101.00001?fields=citationCount";
@@ -195,11 +219,11 @@ describe("Semantic Scholar Integration Tests", () => {
     });
 
     it("Scenario 3: Successful fetch and update via Title/Author/Year Search", async () => {
-      mockItem = createMockItem({
+      mockItem = createMockItem(sandbox, { // Pass sandbox
         title: "Test Paper Title",
         creators: [{ lastName: "Doe", name: "John Doe" }],
         year: "2023",
-        date: "2023-01-15", // _getItemMetadataForAdsQuery prefers year field but can use date
+        date: "2023-01-15", 
       });
       mockZotero.getActiveZoteroPane().getSelectedItems.returns([mockItem]);
       
@@ -217,7 +241,7 @@ describe("Semantic Scholar Integration Tests", () => {
         }),
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
       
       const expectedQuery = "title%3ATest%20Paper%20Title%2Bauthor%3ADoe%2Byear%3A2023";
       const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
@@ -228,7 +252,7 @@ describe("Semantic Scholar Integration Tests", () => {
     });
 
     it("Scenario 4: Title Search - No Results", async () => {
-      mockItem = createMockItem({
+      mockItem = createMockItem(sandbox, { // Pass sandbox
         title: "Obscure Paper",
         creators: [{ lastName: "Nobody" }],
         year: "2020",
@@ -241,7 +265,7 @@ describe("Semantic Scholar Integration Tests", () => {
         json: async () => ({ total: 0, data: [] }), // Empty result
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       const expectedQuery = "title%3AObscure%20Paper%2Bauthor%3ANobody%2Byear%3A2020";
       const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
@@ -253,7 +277,7 @@ describe("Semantic Scholar Integration Tests", () => {
       const itemProgressInstance = pwInstance.ItemProgress();
       expect(itemProgressInstance.setError.calledOnce).to.be.true;
       
-      const formatValueStub = ZoteroCitationCounts.l10n.formatValue;
+      const formatValueStub = global.ZoteroCitationCounts.l10n.formatValue; // Use global.ZoteroCitationCounts
       expect(formatValueStub.calledWith("citationcounts-progresswindow-error-no-results-all-attempts", { api: "Semantic Scholar" })).to.be.true;
       // Check Zotero.debug for the specific error message logged in _retrieveCitationCount
       sinon.assert.calledWith(mockZotero.debug, sinon.match("No citation count found via Semantic Scholar/Title"));
@@ -261,10 +285,10 @@ describe("Semantic Scholar Integration Tests", () => {
     });
 
     it("Scenario 5: Title Search - Insufficient Metadata", async () => {
-      mockItem = createMockItem({ title: "A Title Alone" }); // Missing author/year
+      mockItem = createMockItem(sandbox, { title: "A Title Alone" }); // Pass sandbox
       mockZotero.getActiveZoteroPane().getSelectedItems.returns([mockItem]);
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       expect(global.fetch.called).to.be.false; // Fetch should not be called
       expect(mockItem.setField.called).to.be.false;
@@ -273,13 +297,13 @@ describe("Semantic Scholar Integration Tests", () => {
       const pwInstance = mockZotero.ProgressWindow();
       const itemProgressInstance = pwInstance.ItemProgress();
       expect(itemProgressInstance.setError.calledOnce).to.be.true;
-      const formatValueStub = ZoteroCitationCounts.l10n.formatValue;
+      const formatValueStub = global.ZoteroCitationCounts.l10n.formatValue; // Use global.ZoteroCitationCounts
       expect(formatValueStub.calledWith("citationcounts-progresswindow-error-insufficient-metadata-for-title-search", { api: "Semantic Scholar" })).to.be.true;
       sinon.assert.calledWith(mockZotero.debug, sinon.match("Insufficient metadata for title search for item 'A Title Alone' using Semantic Scholar."));
     });
 
     it("Scenario 6: Prioritization - DOI Search Preferred over Title Search", async () => {
-      mockItem = createMockItem({
+      mockItem = createMockItem(sandbox, { // Pass sandbox
         DOI: "10.1000/realdoi",
         title: "A Real Title",
         creators: [{ lastName: "Author" }],
@@ -293,7 +317,7 @@ describe("Semantic Scholar Integration Tests", () => {
         json: async () => ({ citationCount: 777 }),
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       const expectedDoiUrl = "https://api.semanticscholar.org/graph/v1/paper/10.1000%2Frealdoi?fields=citationCount";
       expect(global.fetch.calledOnceWith(expectedDoiUrl)).to.be.true; // Only DOI url
@@ -306,7 +330,7 @@ describe("Semantic Scholar Integration Tests", () => {
     });
 
     it("Scenario 7: Prioritization - arXiv Search Preferred over Title Search (No DOI)", async () => {
-      mockItem = createMockItem({
+      mockItem = createMockItem(sandbox, { // Pass sandbox
         url: "http://arxiv.org/abs/2202.00002",
         title: "An ArXiv Title",
         creators: [{ lastName: "Scientist" }],
@@ -320,7 +344,7 @@ describe("Semantic Scholar Integration Tests", () => {
         json: async () => ({ citationCount: 888 }),
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       const expectedArxivUrl = "https://api.semanticscholar.org/graph/v1/paper/arXiv:2202.00002?fields=citationCount";
       expect(global.fetch.calledOnceWith(expectedArxivUrl)).to.be.true;
@@ -333,9 +357,9 @@ describe("Semantic Scholar Integration Tests", () => {
     });
 
     it("Scenario 8: Fallback - DOI fails (no-id), arXiv fails (no-id), Title Search Succeeds", async () => {
-      mockItem = createMockItem({
-        DOI: "10.0000/nonexistentdoi", // Will cause "no-doi" or "no-citation-count"
-        url: "http://arxiv.org/abs/0000.00000", // Will cause "no-arxiv" or "no-citation-count"
+      mockItem = createMockItem(sandbox, { // Pass sandbox
+        DOI: null, // Explicitly null for this test
+        url: null,  // Explicitly null for this test
         title: "Fallback Title",
         creators: [{ lastName: "Persistent" }],
         year: "2019",
@@ -357,7 +381,7 @@ describe("Semantic Scholar Integration Tests", () => {
           json: async () => ({ total: 1, data: [{ citationCount: 99 }] }),
         });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       expect(global.fetch.calledWith(doiUrl)).to.be.true;
       expect(global.fetch.calledWith(arxivUrl)).to.be.true;
@@ -371,7 +395,7 @@ describe("Semantic Scholar Integration Tests", () => {
     });
     
     it("Scenario 9: API Error during Title Search (e.g., 500 server error)", async () => {
-      mockItem = createMockItem({
+      mockItem = createMockItem(sandbox, { // Pass sandbox
         title: "Error Paper",
         creators: [{ lastName: "Unlucky" }],
         year: "2024",
@@ -388,7 +412,7 @@ describe("Semantic Scholar Integration Tests", () => {
         json: async () => ({ message: "Internal Server Error" }),
       });
 
-      await ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI); // Use global.ZoteroCitationCounts
 
       expect(global.fetch.calledOnceWith(titleUrl)).to.be.true;
       expect(mockItem.setField.called).to.be.false;
@@ -397,7 +421,7 @@ describe("Semantic Scholar Integration Tests", () => {
       const pwInstance = mockZotero.ProgressWindow();
       const itemProgressInstance = pwInstance.ItemProgress();
       expect(itemProgressInstance.setError.calledOnce).to.be.true;
-      const formatValueStub = ZoteroCitationCounts.l10n.formatValue;
+      const formatValueStub = global.ZoteroCitationCounts.l10n.formatValue; // Use global.ZoteroCitationCounts
       expect(formatValueStub.calledWith("citationcounts-progresswindow-error-bad-api-response", { api: "Semantic Scholar" })).to.be.true;
       sinon.assert.calledWith(mockZotero.debug, sinon.match(`Bad API response for ${titleUrl}: status 500`));
     });

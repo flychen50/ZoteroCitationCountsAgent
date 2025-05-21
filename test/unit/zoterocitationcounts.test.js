@@ -174,7 +174,9 @@ describe('ZoteroCitationCounts', function() {
         paperId: "abcdef123456",
         citationCount: 123
       };
-      const count = await global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
       expect(count).to.equal(123);
     });
 
@@ -185,7 +187,9 @@ describe('ZoteroCitationCounts', function() {
           { paperId: "zyxwvu987654", citationCount: 42, externalIds: {} }
         ]
       };
-      const count = await global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
       expect(count).to.equal(42);
     });
 
@@ -197,20 +201,26 @@ describe('ZoteroCitationCounts', function() {
           { paperId: "abcdef123456", citationCount: 88 }
         ]
       };
-      await global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      await promise;
       expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar query returned 2 results. Using the first one./))).to.be.true;
     });
     
     it('should return null if direct lookup response has no citationCount', async function() {
         const mockResponse = { paperId: "abcdef123456" }; // Missing citationCount
-        const count = await global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+        const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+        await clock.tickAsync(3001);
+        const count = await promise;
         expect(count).to.be.null;
         expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar response did not contain expected citationCount/))).to.be.true;
     });
 
     it('should return null if title search response is empty', async function() {
       const mockResponse = { total: 0, data: [] };
-      const count = await global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
       expect(count).to.be.null;
       expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar search response did not contain expected citationCount in the first result or no results found/))).to.be.true;
     });
@@ -220,7 +230,9 @@ describe('ZoteroCitationCounts', function() {
         total: 1,
         data: [{ paperId: "zyxwvu987654" }] // Missing citationCount
       };
-      const count = await global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(mockResponse);
+      await clock.tickAsync(3001);
+      const count = await promise;
       expect(count).to.be.null;
       expect(global.Zotero.debug.calledWith(sinon.match(/Semantic Scholar search response did not contain expected citationCount in the first result or no results found/))).to.be.true;
     });
