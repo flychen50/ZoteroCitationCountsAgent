@@ -59,6 +59,425 @@ describe('ZoteroCitationCounts', function() {
     delete global.ZoteroCitationCounts; // Clean up the global scope
   });
 
+  describe('_getDoi', function() {
+    let mockItem;
+    beforeEach(function() {
+      mockItem = {
+        getField: sinon.stub()
+      };
+    });
+
+    it('should return the DOI if present', function() {
+      mockItem.getField.withArgs('DOI').returns('10.1000/xyz123');
+      const doi = global.ZoteroCitationCounts._getDoi(mockItem);
+      expect(doi).to.equal(encodeURIComponent('10.1000/xyz123'));
+    });
+
+    it('should throw an error if DOI is not present', function() {
+      mockItem.getField.withArgs('DOI').returns(''); // Or undefined or null
+      expect(() => global.ZoteroCitationCounts._getDoi(mockItem))
+        .to.throw('citationcounts-progresswindow-error-no-doi');
+    });
+  });
+
+  describe('getCitationCount (getter)', function() {
+    let mockItem;
+    beforeEach(function() {
+      mockItem = {
+        getField: sinon.stub()
+      };
+    });
+
+    it('should return the citation count string if "Citations: X" exists', function() {
+      mockItem.getField.withArgs('extra').returns('Citations: 123\nSome other data');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('123');
+    });
+
+    it('should return the citation count string if "X citations" exists', function() {
+      mockItem.getField.withArgs('extra').returns('456 citations (TestSource) [2023-01-01]\nAnother line');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('456');
+    });
+    
+    it('should return the first match if multiple citation lines exist', function() {
+      mockItem.getField.withArgs('extra').returns('Citations: 789\n101 citations (AnotherSource)\nMore data');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('789');
+    });
+    
+    it('should return "-" if no citation line is found', function() {
+      mockItem.getField.withArgs('extra').returns('Just some random notes\nNo citation info here');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('-');
+    });
+
+    it('should return "-" if extra field is empty or null', function() {
+      mockItem.getField.withArgs('extra').returns('');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('-');
+      
+      mockItem.getField.withArgs('extra').returns(null);
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('-');
+    });
+    
+    it('should handle case-insensitivity in "Citations:"', function() {
+      mockItem.getField.withArgs('extra').returns('citations: 22');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('22');
+    });
+
+    it('should handle case-insensitivity in "X citations"', function() {
+      mockItem.getField.withArgs('extra').returns('33 CITATIONS');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('33');
+    });
+  });
+
+  describe('_setCitationCount', function() {
+    let mockItem;
+    let clock;
+
+    beforeEach(function() {
+      mockItem = {
+        getField: sinon.stub(),
+        setField: sinon.stub(),
+        saveTx: sinon.stub()
+      };
+      // Freeze time for consistent date formatting in tests
+      clock = sinon.useFakeTimers(new Date(2024, 0, 15).getTime()); // Jan 15, 2024
+    });
+
+    afterEach(function() {
+      clock.restore();
+    });
+
+    it('should add citation count to an empty extra field', function() {
+      mockItem.getField.withArgs('extra').returns('');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 123);
+      const expectedExtra = '123 citations (TestSource) [2024-01-15]';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+      expect(mockItem.saveTx.calledOnce).to.be.true;
+    });
+
+    it('should add citation count to an existing extra field with other data', function() {
+      mockItem.getField.withArgs('extra').returns('Some other note\nAnother line');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 456);
+      const expectedExtra = '456 citations (TestSource) [2024-01-15]\nSome other note\nAnother line';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+
+    it('should update existing citation count from the same source (Citations: format)', function() {
+      mockItem.getField.withArgs('extra').returns('Citations (TestSource): 100 [2023-10-10]\nOther data');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 789);
+      const expectedExtra = '789 citations (TestSource) [2024-01-15]\nOther data';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+    
+    it('should update existing citation count from the same source (X citations format)', function() {
+      mockItem.getField.withArgs('extra').returns('50 citations (TestSource) [2023-11-11]\nOther data');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 789);
+      const expectedExtra = '789 citations (TestSource) [2024-01-15]\nOther data';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+
+    it('should add new citation count if existing one is from a different source', function() {
+      mockItem.getField.withArgs('extra').returns('Citations (AnotherSource): 200 [2023-12-12]');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 321);
+      const expectedExtra = '321 citations (TestSource) [2024-01-15]\nCitations (AnotherSource): 200 [2023-12-12]';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+    
+    it('should correctly place new citation count at the top, preserving multiple other lines', function() {
+      mockItem.getField.withArgs('extra').returns('Line 1\nLine 2\nCitations (OldSource): 50 [2020-01-01]\nLine 4');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'NewSource', 25);
+      const expectedExtra = '25 citations (NewSource) [2024-01-15]\nLine 1\nLine 2\nLine 4';
+      // The line 'Citations (OldSource): 50 [2020-01-01]' should be removed because it matches the general pattern,
+      // even if the source is different. The current implementation filters out any line starting with "Citations:" or "X citations"
+      // if it doesn't match the *current* source. This test clarifies that behavior.
+      // To be more precise, the filter is `!pattern.test(line)` where pattern is `/^Citations \(${source}\):|^\d+ citations \(${source}\)/i`
+      // This means lines from OTHER sources are KEPT. Let's adjust the test.
+      
+      // Corrected expectation:
+      mockItem.getField.withArgs('extra').returns('Line 1\nLine 2\nCitations (OldSource): 50 [2020-01-01]\nLine 4');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'NewSource', 25);
+      const correctedExpectedExtra = '25 citations (NewSource) [2024-01-15]\nLine 1\nLine 2\nCitations (OldSource): 50 [2020-01-01]\nLine 4';
+      expect(mockItem.setField.calledOnceWith('extra', correctedExpectedExtra)).to.be.true;
+    });
+
+    it('should handle case-insensitivity for "Citations:" and source matching', function() {
+      mockItem.getField.withArgs('extra').returns('citations (tEsTsOuRcE): 10 [2023-01-01]');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 30);
+      const expectedExtra = '30 citations (TestSource) [2024-01-15]';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+  });
+
+  describe('_getArxiv', function() {
+    let mockItem;
+    beforeEach(function() {
+      mockItem = {
+        getField: sinon.stub()
+      };
+    });
+
+    it('should extract arXiv ID from URL (abs format)', function() {
+      mockItem.getField.withArgs('url').returns('https://arxiv.org/abs/1234.5678');
+      const arxiv = global.ZoteroCitationCounts._getArxiv(mockItem);
+      expect(arxiv).to.equal(encodeURIComponent('1234.5678'));
+    });
+
+    it('should extract arXiv ID from URL (arXiv: format)', function() {
+      mockItem.getField.withArgs('url').returns('arXiv:0901.0001');
+      const arxiv = global.ZoteroCitationCounts._getArxiv(mockItem);
+      expect(arxiv).to.equal(encodeURIComponent('0901.0001'));
+    });
+    
+    it('should extract arXiv ID with version from URL', function() {
+      mockItem.getField.withArgs('url').returns('http://arxiv.org/abs/1501.00001v2');
+      const arxiv = global.ZoteroCitationCounts._getArxiv(mockItem);
+      expect(arxiv).to.equal(encodeURIComponent('1501.00001v2'));
+    });
+
+    it('should extract arXiv ID with category from URL', function() {
+      mockItem.getField.withArgs('url').returns('https://arxiv.org/abs/cs.AI/0401001');
+      const arxiv = global.ZoteroCitationCounts._getArxiv(mockItem);
+      expect(arxiv).to.equal(encodeURIComponent('cs.AI/0401001'));
+    });
+
+    it('should throw an error if URL is missing', function() {
+      mockItem.getField.withArgs('url').returns('');
+      expect(() => global.ZoteroCitationCounts._getArxiv(mockItem))
+        .to.throw('citationcounts-progresswindow-error-no-arxiv');
+    });
+
+    it('should throw an error if URL does not contain arXiv ID', function() {
+      mockItem.getField.withArgs('url').returns('https://example.com');
+      expect(() => global.ZoteroCitationCounts._getArxiv(mockItem))
+        .to.throw('citationcounts-progresswindow-error-no-arxiv');
+    });
+  });
+
+  describe('_getItemMetadataForAdsQuery', function() {
+    let mockItem;
+    beforeEach(function() {
+      mockItem = {
+        getField: sinon.stub(),
+        getCreators: sinon.stub().returns([])
+      };
+    });
+
+    it('should extract title, author last name, and year', function() {
+      mockItem.getField.withArgs('title').returns('Test Title');
+      mockItem.getField.withArgs('year').returns('2023');
+      mockItem.getCreators.returns([{ lastName: 'Doe', creatorType: 'author' }]);
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata).to.deep.equal({ title: 'Test Title', author: 'Doe', year: '2023' });
+    });
+
+    it('should extract year from date field if year is missing', function() {
+      mockItem.getField.withArgs('title').returns('Another Title');
+      mockItem.getField.withArgs('year').returns(''); // No year
+      mockItem.getField.withArgs('date').returns('2022-01-15');
+      mockItem.getCreators.returns([{ name: 'Smith', creatorType: 'author' }]); // Using 'name' as fallback
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata).to.deep.equal({ title: 'Another Title', author: 'Smith', year: '2022' });
+    });
+    
+    it('should extract year from date field with "c. YYYY" format', function() {
+      mockItem.getField.withArgs('date').returns('c. 2021');
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata.year).to.equal('2021');
+    });
+
+    it('should handle missing title', function() {
+      mockItem.getField.withArgs('year').returns('2020');
+      mockItem.getCreators.returns([{ lastName: 'Jane', creatorType: 'author' }]);
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata).to.deep.equal({ title: null, author: 'Jane', year: '2020' });
+    });
+
+    it('should handle missing author', function() {
+      mockItem.getField.withArgs('title').returns('Title Only');
+      mockItem.getField.withArgs('year').returns('2019');
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata).to.deep.equal({ title: 'Title Only', author: null, year: '2019' });
+    });
+
+    it('should handle missing year and date', function() {
+      mockItem.getField.withArgs('title').returns('Timeless Work');
+      mockItem.getCreators.returns([{ lastName: 'Ancient', creatorType: 'author' }]);
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata).to.deep.equal({ title: 'Timeless Work', author: 'Ancient', year: null });
+    });
+    
+    it('should return all null if no relevant fields are present', function() {
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata).to.deep.equal({ title: null, author: null, year: null });
+    });
+  });
+
+  describe('UI Logic (Basic Checks)', function() {
+    describe('_storeAddedElement', function() {
+      beforeEach(function() {
+        global.ZoteroCitationCounts._addedElementIDs = []; // Reset before each test
+      });
+
+      it('should add an element ID to the list', function() {
+        global.ZoteroCitationCounts._storeAddedElement({ id: 'test-id-1' });
+        expect(global.ZoteroCitationCounts._addedElementIDs).to.include('test-id-1');
+      });
+
+      it('should throw an error if element has no ID', function() {
+        expect(() => global.ZoteroCitationCounts._storeAddedElement({}))
+          .to.throw('Element must have an id.');
+      });
+    });
+
+    describe('_injectXULElement', function() {
+      let mockDocument;
+      let mockElement;
+
+      beforeEach(function() {
+        mockElement = { 
+          id: '', 
+          setAttribute: sinon.stub(),
+          addEventListener: sinon.stub()
+        };
+        mockDocument = {
+          createXULElement: sinon.stub().returns(mockElement),
+          getElementById: sinon.stub().returns({ appendChild: sinon.stub() })
+        };
+        global.ZoteroCitationCounts._addedElementIDs = []; // Reset
+      });
+
+      it('should create an element, set its ID, attributes, and append it', function() {
+        const attributes = { label: 'Test', class: 'test-class' };
+        const eventListeners = { command: () => {} };
+        global.ZoteroCitationCounts._injectXULElement(
+          mockDocument,
+          'menuitem',
+          'test-elem-id',
+          attributes,
+          'parent-id',
+          eventListeners
+        );
+
+        expect(mockDocument.createXULElement.calledOnceWith('menuitem')).to.be.true;
+        expect(mockElement.id).to.equal('test-elem-id');
+        expect(mockElement.setAttribute.calledWith('label', 'Test')).to.be.true;
+        expect(mockElement.setAttribute.calledWith('class', 'test-class')).to.be.true;
+        expect(mockElement.addEventListener.calledOnceWith('command', eventListeners.command)).to.be.true;
+        expect(mockDocument.getElementById.calledOnceWith('parent-id')).to.be.true;
+        expect(mockDocument.getElementById('parent-id').appendChild.calledOnceWith(mockElement)).to.be.true;
+        expect(global.ZoteroCitationCounts._addedElementIDs).to.include('test-elem-id');
+      });
+    });
+  });
+  
+  describe('updateItems & _updateItem', function() {
+    let mockItems;
+    let mockApi;
+    let mockProgressWindow;
+    let mockProgressWindowItem;
+
+    beforeEach(function() {
+      mockProgressWindowItem = {
+        setError: sinon.stub(),
+        setIcon: sinon.stub(),
+        setProgress: sinon.stub(),
+      };
+      mockProgressWindow = {
+        show: sinon.stub(),
+        changeHeadline: sinon.stub(),
+        ItemProgress: sinon.stub().returns(mockProgressWindowItem),
+        startCloseTimer: sinon.stub(),
+      };
+      sinon.stub(global.Zotero, 'ProgressWindow').returns(mockProgressWindow);
+
+      // Stub the core logic functions that are called by _updateItem
+      sinon.stub(global.ZoteroCitationCounts, '_retrieveCitationCount');
+      sinon.stub(global.ZoteroCitationCounts, '_setCitationCount');
+      
+      // Mock l10n
+      global.ZoteroCitationCounts.l10n = {
+        formatValue: sinon.stub().resolvesArg(0) // Return the key itself for simplicity
+      };
+
+
+      mockApi = { 
+        name: 'TestAPI', 
+        useDoi: true, 
+        useArxiv: false, 
+        methods: { 
+          urlBuilder: sinon.stub(), 
+          responseCallback: sinon.stub() 
+        },
+        useTitleSearch: false
+      };
+      
+      mockItems = [
+        { itemID: 1, getField: sinon.stub().withArgs('title').returns('Title 1'), isFeedItem: false },
+        { itemID: 2, getField: sinon.stub().withArgs('title').returns('Title 2'), isFeedItem: false },
+        { itemID: 3, getField: sinon.stub().withArgs('title').returns('Title 3'), isFeedItem: true }, // Feed item
+      ];
+    });
+
+    afterEach(function() {
+      global.Zotero.ProgressWindow.restore();
+      global.ZoteroCitationCounts._retrieveCitationCount.restore();
+      global.ZoteroCitationCounts._setCitationCount.restore();
+    });
+
+    it('updateItems should filter out feed items and initialize progress window', async function() {
+      await global.ZoteroCitationCounts.updateItems(mockItems, mockApi);
+
+      expect(global.Zotero.ProgressWindow.calledOnce).to.be.true;
+      expect(mockProgressWindow.changeHeadline.calledOnce).to.be.true;
+      // Two non-feed items
+      expect(mockProgressWindow.ItemProgress.callCount).to.equal(2); 
+      expect(mockProgressWindow.show.calledOnce).to.be.true;
+      // Check that _updateItem was called, starting with index 0 for non-feed items
+      expect(global.ZoteroCitationCounts._retrieveCitationCount.called).to.be.true; // Indirectly checks if _updateItem was run
+    });
+    
+    it('updateItems should not proceed if no valid items are found', async function() {
+      const feedItemsOnly = [{ isFeedItem: true }, { isFeedItem: true }];
+      await global.ZoteroCitationCounts.updateItems(feedItemsOnly, mockApi);
+      expect(global.Zotero.ProgressWindow.called).to.be.false;
+    });
+
+    it('_updateItem should process items successfully', async function() {
+      const itemsToProcess = [mockItems[0], mockItems[1]];
+      global.ZoteroCitationCounts._retrieveCitationCount.resolves([10, 'TestAPI/DOI']);
+
+      // Directly call _updateItem to test its recursive logic
+      // Need to manually create the progressWindowItems for the direct call
+      const pwItems = itemsToProcess.map(() => new mockProgressWindow.ItemProgress());
+      
+      await global.ZoteroCitationCounts._updateItem(0, itemsToProcess, mockApi, mockProgressWindow, pwItems);
+
+      expect(global.ZoteroCitationCounts._retrieveCitationCount.callCount).to.equal(2);
+      expect(global.ZoteroCitationCounts._setCitationCount.callCount).to.equal(2);
+      expect(pwItems[0].setIcon.calledWith(global.ZoteroCitationCounts.icon("tick"))).to.be.true;
+      expect(pwItems[1].setIcon.calledWith(global.ZoteroCitationCounts.icon("tick"))).to.be.true;
+      expect(mockProgressWindow.changeHeadline.calledWith('citationcounts-progresswindow-finished-headline')).to.be.true;
+      expect(mockProgressWindow.startCloseTimer.calledOnce).to.be.true;
+    });
+    
+    it('_updateItem should handle errors during citation retrieval', async function() {
+      const itemsToProcess = [mockItems[0], mockItems[1]];
+      global.ZoteroCitationCounts._retrieveCitationCount
+        .onFirstCall().resolves([20, 'TestAPI/DOI'])
+        .onSecondCall().rejects(new Error('citationcounts-progresswindow-error-no-doi')); // Simulate error for the second item
+
+      const pwItems = itemsToProcess.map(() => new mockProgressWindow.ItemProgress());
+
+      await global.ZoteroCitationCounts._updateItem(0, itemsToProcess, mockApi, mockProgressWindow, pwItems);
+
+      expect(global.ZoteroCitationCounts._retrieveCitationCount.callCount).to.equal(2);
+      expect(global.ZoteroCitationCounts._setCitationCount.callCount).to.equal(1); // Only for the first item
+      expect(pwItems[0].setIcon.calledWith(global.ZoteroCitationCounts.icon("tick"))).to.be.true;
+      expect(pwItems[1].setError.calledOnce).to.be.true;
+      // Check that a new ItemProgress was created for the error message
+      expect(mockProgressWindow.ItemProgress.callCount).to.equal(itemsToProcess.length + 1); // 2 initial + 1 for error message
+      expect(mockProgressWindow.changeHeadline.calledWith('citationcounts-progresswindow-finished-headline')).to.be.true;
+    });
+  });
+
   describe('_nasaadsUrl', function() {
     it('should construct the correct URL with API key for DOI', function() {
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_API_KEY');
