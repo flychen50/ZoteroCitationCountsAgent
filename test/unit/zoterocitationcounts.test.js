@@ -413,10 +413,10 @@ describe('ZoteroCitationCounts', function() {
         await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
       } catch (e) {
         actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
-    });
+            }
+            expect(actualError).to.be.an('Error');
+            expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
+          });
 
 
     it('should throw no-citation-count error for successful response but malformed JSON', async function() {
@@ -481,3 +481,28 @@ describe('ZoteroCitationCounts', function() {
 
         });
       });
+
+describe('_crossrefUrl', function() {
+  it('should construct the correct URL for Crossref API', function() {
+    const id = '10.1000/xyz123';
+    const actualUrl = global.ZoteroCitationCounts._crossrefUrl(id, 'doi');
+    const expectedUrl = `https://api.crossref.org/works/${id}/transform/application/vnd.citationstyles.csl+json`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
+
+describe('_inspireUrl', function() {
+  it('should construct the correct URL for INSPIRE-HEP API with DOI', function() {
+    const id = '10.1000/xyz123';
+    const actualUrl = global.ZoteroCitationCounts._inspireUrl(id, 'doi');
+    const expectedUrl = `https://inspirehep.net/api/doi/${id}`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for INSPIRE-HEP API with arXiv ID', function() {
+    const id = '2303.12345';
+    const actualUrl = global.ZoteroCitationCounts._inspireUrl(id, 'arxiv');
+    const expectedUrl = `https://inspirehep.net/api/arxiv/${id}`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
