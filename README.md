@@ -65,3 +65,15 @@ To use the new build and release process, follow these steps:
 6. The built xpi file will be located in the `dist/` directory.
 
 The GitHub Actions workflow is configured to automatically build and create a release when changes are pushed to the `main` branch or a new release is created. The release will include the source code and the built xpi file.
+
+## Running Tests
+
+To run the integration tests for Crossref and INSPIRE-HEP, follow these steps:
+
+1. Ensure you have Node.js installed on your machine.
+2. Clone the repository: `git clone https://github.com/flychen50/ZoteroCitationCountsAgent.git`
+3. Navigate to the project directory: `cd ZoteroCitationCountsAgent`
+4. Install the dependencies: `npm install`
+5. Run the integration tests: `npm run test:integration`
+
+The integration tests for Crossref and INSPIRE-HEP are located in the `test/integration/crossref.integration.test.js` and `test/integration/inspirehep.integration.test.js` files, respectively.
