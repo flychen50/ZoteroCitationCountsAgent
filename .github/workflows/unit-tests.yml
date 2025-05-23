@@ -26,11 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install nyc for test coverage
-        run: npm install -g nyc
-
       - name: Run unit tests with coverage
-        run: nyc mocha
+        run: npx nyc mocha test/unit/**/*.test.js
 
       - name: Check coverage thresholds
         run: nyc check-coverage --lines 80 --functions 80 --branches 80
