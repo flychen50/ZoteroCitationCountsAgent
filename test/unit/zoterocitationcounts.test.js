@@ -413,10 +413,10 @@ describe('ZoteroCitationCounts', function() {
         await global.ZoteroCitationCounts._sendRequest(otherApiUrl, mockCallback);
       } catch (e) {
         actualError = e;
-      }
-      expect(actualError).to.be.an('Error');
-      expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
-    });
+            }
+            expect(actualError).to.be.an('Error');
+            expect(actualError.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
+          });
 
 
     it('should throw no-citation-count error for successful response but malformed JSON', async function() {
@@ -481,3 +481,151 @@ describe('ZoteroCitationCounts', function() {
 
         });
       });
+
+describe('_crossrefUrl', function() {
+  it('should construct the correct URL for Crossref API', function() {
+    const id = '10.1000/xyz123';
+    const actualUrl = global.ZoteroCitationCounts._crossrefUrl(id, 'doi');
+    const expectedUrl = `https://api.crossref.org/works/${id}/transform/application/vnd.citationstyles.csl+json`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
+
+describe('_inspireUrl', function() {
+  it('should construct the correct URL for INSPIRE-HEP API with DOI', function() {
+    const id = '10.1000/xyz123';
+    const actualUrl = global.ZoteroCitationCounts._inspireUrl(id, 'doi');
+    const expectedUrl = `https://inspirehep.net/api/doi/${id}`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for INSPIRE-HEP API with arXiv ID', function() {
+    const id = '2303.12345';
+    const actualUrl = global.ZoteroCitationCounts._inspireUrl(id, 'arxiv');
+    const expectedUrl = `https://inspirehep.net/api/arxiv/${id}`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
+
+describe('_crossrefUrl', function() {
+  it('should construct the correct URL for Crossref API', function() {
+    const id = '10.1000/xyz123';
+    const actualUrl = global.ZoteroCitationCounts._crossrefUrl(id, 'doi');
+    const expectedUrl = `https://api.crossref.org/works/${id}/transform/application/vnd.citationstyles.csl+json`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
+
+describe('_inspireUrl', function() {
+  it('should construct the correct URL for INSPIRE-HEP API with DOI', function() {
+    const id = '10.1000/xyz123';
+    const actualUrl = global.ZoteroCitationCounts._inspireUrl(id, 'doi');
+    const expectedUrl = `https://inspirehep.net/api/doi/${id}`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for INSPIRE-HEP API with arXiv ID', function() {
+    const id = '2303.12345';
+    const actualUrl = global.ZoteroCitationCounts._inspireUrl(id, 'arxiv');
+    const expectedUrl = `https://inspirehep.net/api/arxiv/${id}`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
+
+describe('_semanticScholarUrl', function() {
+  it('should construct the correct URL for DOI lookup', function() {
+    const id = '10.1000/xyz123';
+    const type = 'doi';
+    const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(id, type);
+    const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/${encodeURIComponent(id)}?fields=citationCount`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for arXiv lookup', function() {
+    const id = '2303.12345';
+    const type = 'arxiv';
+    const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(id, type);
+    const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/arXiv:${encodeURIComponent(id)}?fields=citationCount`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for title/author/year search with all fields', function() {
+    const metadata = {
+      title: "A Test Paper",
+      author: "Doe, J.", // Assuming author might have comma, should be encoded
+      year: "2023"
+    };
+    const type = 'title_author_year';
+    const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+    const expectedQuery = `title:${encodeURIComponent(metadata.title)}+author:${encodeURIComponent(metadata.author)}+year:${encodeURIComponent(metadata.year)}`;
+    const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for title/author/year search with title and author only', function() {
+    const metadata = {
+      title: "Another Test Paper",
+      author: "Smith"
+    };
+    const type = 'title_author_year';
+    const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+    const expectedQuery = `title:${encodeURIComponent(metadata.title)}+author:${encodeURIComponent(metadata.author)}`;
+    const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for title/author/year search with title and year only', function() {
+    const metadata = {
+      title: "A Third Test Paper",
+      year: "2021"
+    };
+    const type = 'title_author_year';
+    const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+    const expectedQuery = `title:${encodeURIComponent(metadata.title)}+year:${encodeURIComponent(metadata.year)}`;
+    const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL for title/author/year search with title only', function() {
+    const metadata = {
+      title: "Title Only Paper"
+    };
+    const type = 'title_author_year';
+    const actualUrl = global.ZoteroCitationCounts._semanticScholarUrl(metadata, type);
+    const expectedQuery = `title:${encodeURIComponent(metadata.title)}`;
+    const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
+
+describe('_nasaadsUrl', function() {
+  it('should construct the correct URL with API key for DOI', function() {
+    global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_API_KEY');
+    
+    const id = '10.1000/xyz123';
+    const type = 'doi';
+    const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
+    const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should construct the correct URL with API key for arXiv', function() {
+    global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_API_KEY_ARXIV');
+    
+    const id = '2303.12345';
+    const type = 'arxiv';
+    const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
+    const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=arxiv:${id}&fl=citation_count`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+
+  it('should use an empty string if API key is not set', function() {
+    global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('');
+    
+    const id = '10.1000/abc789';
+    const type = 'doi';
+    const actualUrl = global.ZoteroCitationCounts._nasaadsUrl(id, type);
+    const expectedUrl = `https://api.adsabs.harvard.edu/v1/search/query?q=doi:${id}&fl=citation_count`;
+    expect(actualUrl).to.equal(expectedUrl);
+  });
+});
