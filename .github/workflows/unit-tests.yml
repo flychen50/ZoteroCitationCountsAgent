@@ -26,5 +26,15 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run unit tests
-        run: npm run test:unit
+      - name: Install nyc for test coverage
+        run: npm install -g nyc
+
+      - name: Run unit tests with coverage
+        run: nyc mocha
+
+      - name: Check coverage thresholds
+        run: nyc check-coverage --lines 80 --functions 80 --branches 80
+
+      - name: Send notifications on test failures
+        if: failure()
+        run: echo "Unit tests failed. Please check the logs for details."
