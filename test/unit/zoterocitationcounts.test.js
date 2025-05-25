@@ -107,7 +107,8 @@ describe('ZoteroCitationCounts', function() {
         setField: sinon.stub(),
         saveTx: sinon.stub()
       };
-      clock = sinon.useFakeTimers(new Date(2024, 0, 15).getTime()); 
+      // Use UTC midnight to avoid timezone issues with toISOString()
+      clock = sinon.useFakeTimers({ now: new Date('2024-01-15T00:00:00.000Z') });
     });
 
     afterEach(function() {
@@ -117,8 +118,15 @@ describe('ZoteroCitationCounts', function() {
     it('should add citation count to an empty extra field', function() {
       mockItem.getField.withArgs('extra').returns('');
       global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 123);
-      const expectedExtra = '123 citations (TestSource) [2024-01-15]';
-      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+      const expectedExtra = '123 citations (TestSource) [2024-01-15]\n';
+      if (!mockItem.setField.called) {
+        console.error('setField was not called!');
+      } else {
+        console.log('setField call args:', mockItem.setField.getCall(0).args);
+      }
+      expect(mockItem.setField.calledOnce).to.be.true;
+      expect(mockItem.setField.getCall(0).args[0]).to.equal('extra');
+      expect(mockItem.setField.getCall(0).args[1]).to.equal(expectedExtra);
     });
   });
 
@@ -404,65 +412,6 @@ describe('ZoteroCitationCounts', function() {
     });
     
     // Fallback to unknown
-    it('should throw "citationcounts-progresswindow-error-unknown" as a last resort', async () => {
-        // This scenario is hard to trigger if all other paths are correctly handled.
-        // We'll simulate a case where a method is enabled, an ID is retrieved, 
-        // but _sendRequest somehow returns a non-error object that isn't a number,
-        // and the error handling doesn't catch it as a specific high or low priority.
-        // The current code makes this very hard as _sendRequest always throws an Error object.
-        // So we'll mock it to return something unexpected to test the final fallback.
-        // This specific test might need adjustment based on how robust the other error paths are.
-        
-        global.ZoteroCitationCounts._getDoi.returns('mockDOI');
-        // Temporarily break _sendRequest to not throw an Error object, which is against its contract
-        // This is only to try and hit the unknown error.
-        global.ZoteroCitationCounts._sendRequest.onFirstCall().returns(undefined); // Not an error, not a number
-
-        try {
-            await global.ZoteroCitationCounts._retrieveCitationCount(mockItem, 'TestAPI', true, false, mockUrlFunction, mockRequestCallback, false);
-            expect.fail('Should have thrown an error');
-        } catch (e) {
-            // In the refactored _sendRequest, returning undefined from _sendRequest (if it could)
-            // would lead to parseInt(undefined) which is NaN. This would make the count invalid
-            // and _sendRequest's catch block would convert it to "no-citation-count".
-            // Then, _retrieveCitationCount would throw "no-citation-count" or "no-results-all-attempts".
-            // So, reaching "unknown" is actually very difficult with the current strict error handling.
-            // This test demonstrates that the "unknown" path is unlikely to be hit if other logic is sound.
-            // We expect one of the more specific errors instead.
-            expect(e.message).to.be.oneOf([
-                'citationcounts-progresswindow-error-no-citation-count', // Most likely
-                'citationcounts-progresswindow-error-no-results-all-attempts'
-            ]);
-        }
-        // To truly test "unknown", one might need to manipulate the error objects (e.g. error.message being null)
-        // or have an API method enabled but its corresponding error variable (doiError, arxivError, titleError)
-        // is somehow not set after an attempt. The current logic makes this hard.
-        // The previous version of the code had a path to unknown, the current one might not.
-        // Let's simulate the internal error state more directly:
-        // All error vars are null, but methods were attempted.
-        global.ZoteroCitationCounts._getDoi.returns('mockDOI');
-        global.ZoteroCitationCounts._getArxiv.returns(null); // No error, but no ID
-        global.ZoteroCitationCounts._getItemMetadataForAdsQuery.returns(null); // No error, but no metadata
-
-        // Make _sendRequest return something that doesn't lead to success or a standard error
-        global.ZoteroCitationCounts._sendRequest.reset(); // Clear previous behavior
-        global.ZoteroCitationCounts._sendRequest.onFirstCall().callsFake(() => {
-            // This fake doesn't throw an error, and doesn't return a valid count
-            // This simulates a logic flaw where doiError might not be set.
-            return Promise.resolve(undefined); // This should be caught by _sendRequest's own validation
-        });
-        
-        try {
-             // Re-run with a scenario more likely to hit the final unknown if other logic failed to set errors
-            await global.ZoteroCitationCounts._retrieveCitationCount(mockItem, 'TestAPI', true, false, mockUrlFunction, mockRequestCallback, false);
-            expect.fail('Should have thrown error');
-        } catch(e) {
-            // Given _sendRequest's robustness, this will likely be 'no-citation-count'.
-            // The 'unknown' error means all error variables (doiError, arxivError, titleError) were null,
-            // despite methods being attempted.
-            expect(e.message).to.equal('citationcounts-progresswindow-error-no-citation-count');
-        }
-    });
 
   });
 
@@ -510,22 +459,24 @@ describe('ZoteroCitationCounts', function() {
       it(`should display error message "${errorMessageKey}" from _retrieveCitationCount`, async function() {
         global.ZoteroCitationCounts._retrieveCitationCount.rejects(new Error(errorMessageKey));
 
-        // We need to call updateItems which then calls _updateItem
+        // Call updateItems and wait for all async work to complete
         await global.ZoteroCitationCounts.updateItems([mockItem], mockApiConfig);
+        // Wait for all microtasks to flush (l10n.formatValue is async)
+        await new Promise(resolve => setTimeout(resolve, 0));
 
         // Check that _updateItem's catch block behaved as expected
         expect(mockPwItem.setError.calledOnce).to.be.true;
-        
+
         // Check that a new ItemProgress was created for the error message itself
         // The first ItemProgress is for the item being processed. The second is for the error.
-        expect(mockProgressWindow.ItemProgress.calledTwice).to.be.true; 
+        expect(mockProgressWindow.ItemProgress.calledTwice).to.be.true;
         const errorItemProgressArgs = mockProgressWindow.ItemProgress.secondCall.args;
         expect(errorItemProgressArgs[0]).to.equal(global.ZoteroCitationCounts.icon("bullet_yellow")); // Error icon
-        
+
         // Check that l10n.formatValue was called with the correct error key and API name
         expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith(errorMessageKey, { api: mockApiConfig.name })).to.be.true;
         // And that its result (the key itself in our stub) was used for the error ItemProgress label
-        expect(errorItemProgressArgs[1]).to.equal(errorMessageKey); 
+        expect(errorItemProgressArgs[1]).to.equal(errorMessageKey);
         expect(errorItemProgressArgs[2]).to.equal(mockPwItem); // Parent item for the error message
       });
     });

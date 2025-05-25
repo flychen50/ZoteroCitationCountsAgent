@@ -74,6 +74,7 @@ ZoteroCitationCounts = {
         name: "NASA ADS",
         useDoi: true,
         useArxiv: true,
+        useTitleSearch: false,
         methods: {
           urlBuilder: this._nasaadsUrl,
           responseCallback: this._nasaadsCallback,
@@ -88,8 +89,11 @@ ZoteroCitationCounts = {
     const extraFieldLines = (item.getField("extra") || "")
       .split("\n")
       .filter((line) => /^Citations:|^\d+ citations/i.test(line));
-
-    return extraFieldLines[0]?.match(/^\d+/) || "-";
+    if (extraFieldLines.length > 0) {
+      const match = extraFieldLines[0].match(/\d+/);
+      if (match) return match[0];
+    }
+    return "-";
   },
 
   getPref: function (pref) {
@@ -403,6 +407,7 @@ ZoteroCitationCounts = {
    */
   _setCitationCount: function (item, source, count) {
     this._log(`[Debug] _setCitationCount: Entered for item '${item.getField('title') || item.id}', source: '${source}', count: ${count}`);
+    console.log('DEBUG _setCitationCount called:', { id: item.id, source, count, item });
     const pattern = /^Citations \(${source}\):|^\d+ citations \(${source}\)/i;
     const extraFieldLinesInitial = (item.getField("extra") || "")
       .split("\n")
@@ -421,6 +426,7 @@ ZoteroCitationCounts = {
     const finalExtraString = extraFieldLines.join('\n');
     this._log(`[Debug] _setCitationCount: Final string for setField: '${finalExtraString}'`);
 
+    console.log('DEBUG setField about to be called:', { id: item.id, finalExtraString });
     item.setField("extra", finalExtraString);
     item.saveTx();
     this._log(`[Debug] _setCitationCount: Exited for item '${item.getField('title') || item.id}'`);

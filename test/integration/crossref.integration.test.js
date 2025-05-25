@@ -1,4 +1,7 @@
+const chai = require("chai");
+const sinon = require("sinon");
 const { assert } = chai;
+const ZoteroItemCitationCounts = require("../../src/zoterocitationcounts.js");
 
 describe("Crossref Integration Tests", () => {
   let Zotero;

@@ -1,3 +1,5 @@
+const chai = require("chai");
+const sinon = require("sinon");
 const { assert } = chai;
 
 describe("INSPIRE-HEP Integration Tests", () => {
