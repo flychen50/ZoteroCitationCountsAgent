@@ -66,7 +66,7 @@ ZoteroCitationCounts = {
         useTitleSearch: true,
         methods: {
           urlBuilder: this._semanticScholarUrl,
-          responseCallback: this._semanticScholarCallback,
+          responseCallback: this._semanticScholarCallback.bind(this),
         },
       },
       {
@@ -77,7 +77,7 @@ ZoteroCitationCounts = {
         useTitleSearch: false,
         methods: {
           urlBuilder: this._nasaadsUrl,
-          responseCallback: this._nasaadsCallback,
+          responseCallback: this._nasaadsCallback.bind(this),
         },
       },
     ];

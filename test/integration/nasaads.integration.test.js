@@ -172,7 +172,7 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       } catch (e) {
         updateError = e;
       }
-      console.log('mockItem.setField.callCount:', mockItem.setField.callCount);
+      // Removed confusing console.log for mockItem.setField.callCount
       if (updateError) {
         console.error('updateItems threw:', updateError);
       }
