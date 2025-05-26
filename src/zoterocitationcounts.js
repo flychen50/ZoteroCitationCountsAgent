@@ -13,8 +13,15 @@ ZoteroCitationCounts = {
    */
   _addedElementIDs: [],
 
-  _log(msg) {
-    Zotero.debug("Zotero Citation Counts: " + msg);
+  _log(msg, level = "info") { // 默认为 info 级别
+    let message = "Zotero Citation Counts: " + msg;
+    Zotero.log(message); // 输出到控制台
+    if (Zotero.Plugins && Zotero.Plugins.Utilities && typeof Zotero.Plugins.Utilities.log === 'function') {
+      Zotero.Plugins.Utilities.log(message, level);
+    } else {
+      // Fallback for older Zotero versions or if Utilities are not available
+      Zotero.debug(message);
+    }
   },
 
   init: function ({ id, version, rootURI }) {
@@ -362,13 +369,16 @@ ZoteroCitationCounts = {
       );
       progressWindow.changeHeadline(headlineFinished);
       progressWindow.startCloseTimer(5000);
+      this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name}`);
       return;
     }
 
     const item = items[currentItemIndex];
     const pwItem = progressWindowItems[currentItemIndex];
+    this._log(`[Info] _updateItem: Processing item ${currentItemIndex + 1}/${items.length}: '${item.getField('title') || item.id}' for API: ${api.name}`);
 
     try {
+      this._log(`[Info] _updateItem: Calling _retrieveCitationCount for item '${item.getField('title') || item.id}'`);
       const [count, source] = await this._retrieveCitationCount(
         item,
         api.name, // Pass the API name
@@ -378,20 +388,35 @@ ZoteroCitationCounts = {
         api.methods.responseCallback,
         api.useTitleSearch // Pass title search preference
       );
+      this._log(`[Info] _updateItem: _retrieveCitationCount returned for item '${item.getField('title') || item.id}'. Count: ${count}, Source: ${source}`);
 
+      this._log(`[Info] _updateItem: Calling _setCitationCount for item '${item.getField('title') || item.id}'`);
       this._setCitationCount(item, source, count);
+      this._log(`[Info] _updateItem: _setCitationCount finished for item '${item.getField('title') || item.id}'`);
 
-      pwItem.setIcon(this.icon("tick"));
+      pwItem.setImage(this.icon("tick")); // Changed setIcon to setImage
       pwItem.setProgress(100);
     } catch (error) {
+      this._log(`[Error] _updateItem: Error processing item '${item.getField('title') || item.id}': ${error.message}${error.stack ? '\nStack: ' + error.stack : ''}`);
       pwItem.setError();
+      let errorMessageText = await this.l10n.formatValue(error.message, { api: api.name });
+      if (errorMessageText == null) { // Check for both null and undefined
+        this._log(`[Warning] _updateItem: l10n.formatValue returned null/undefined for error key '${error.message}'. Using fallback message.`);
+        // Attempt to get a generic fallback message, or use a hardcoded one.
+        let fallbackErrorMessage = await this.l10n.formatValue("citationcounts-progresswindow-error-unknown", { api: api.name });
+        if (fallbackErrorMessage == null) {
+            fallbackErrorMessage = `Error processing item (key: ${error.message || 'unknown'})`; // Hardcoded fallback
+        }
+        errorMessageText = fallbackErrorMessage;
+      }
       new progressWindow.ItemProgress(
         this.icon("bullet_yellow"),
-        await this.l10n.formatValue(error.message, { api: api.name }),
+        errorMessageText, // Use the potentially modified errorMessageText
         pwItem
       );
     }
 
+    this._log(`[Info] _updateItem: Moving to next item for API: ${api.name}`);
     this._updateItem(
       currentItemIndex + 1,
       items,
@@ -406,30 +431,45 @@ ZoteroCitationCounts = {
    * Ref: https://www.zotero.org/support/kb/item_types_and_fields#citing_fields_from_extra
    */
   _setCitationCount: function (item, source, count) {
-    this._log(`[Debug] _setCitationCount: Entered for item '${item.getField('title') || item.id}', source: '${source}', count: ${count}`);
-    console.log('DEBUG _setCitationCount called:', { id: item.id, source, count, item });
-    const pattern = /^Citations \(${source}\):|^\d+ citations \(${source}\)/i;
-    const extraFieldLinesInitial = (item.getField("extra") || "")
+    this._log(`[Info] _setCitationCount: Entered for item '${item.getField('title') || item.id}', source: '${source}', count: ${count}`);
+    const initialExtra = item.getField("extra") || "";
+    this._log(`[Info] _setCitationCount: Initial 'extra' field content for item '${item.getField('title') || item.id}': "${initialExtra}"`);
+
+    const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape special regex characters
+    const pattern = new RegExp(`^Citations \\(${escapedSource}\\):|^\\d+ citations \\(${escapedSource}\\)`, 'i');
+    this._log(`[Info] _setCitationCount: Filtering pattern for item '${item.getField('title') || item.id}': ${pattern}`);
+
+    const extraFieldLinesInitial = initialExtra
       .split("\n")
-      .filter((line) => !pattern.test(line));
-    this._log(`[Debug] _setCitationCount: Initial extraFieldLines (after filter): ${JSON.stringify(extraFieldLinesInitial)}`);
+      .filter((line) => {
+        const willBeFilteredOut = pattern.test(line);
+        if (willBeFilteredOut) {
+          this._log(`[Info] _setCitationCount: Filtering out line for item '${item.getField('title') || item.id}': "${line}"`);
+        }
+        return !willBeFilteredOut;
+      });
+    this._log(`[Info] _setCitationCount: 'extra' field lines after filtering existing '${source}' citations for item '${item.getField('title') || item.id}': ${JSON.stringify(extraFieldLinesInitial)}`);
 
     const today = new Date().toISOString().split("T")[0];
     const lineToUnshift = `${count} citations (${source}) [${today}]`;
-    this._log(`[Debug] _setCitationCount: Line to unshift: '${lineToUnshift}'`);
+    this._log(`[Info] _setCitationCount: Line to unshift (new citation line) for item '${item.getField('title') || item.id}': '${lineToUnshift}'`);
     
-    // Create a new array for modification to avoid issues with logging the same reference if unshift modifies in place and logging is async.
     const extraFieldLines = [...extraFieldLinesInitial];
     extraFieldLines.unshift(lineToUnshift);
-    this._log(`[Debug] _setCitationCount: extraFieldLines after unshift: ${JSON.stringify(extraFieldLines)}`);
+    this._log(`[Info] _setCitationCount: 'extra' field lines after unshifting new citation for item '${item.getField('title') || item.id}': ${JSON.stringify(extraFieldLines)}`);
 
     const finalExtraString = extraFieldLines.join('\n');
-    this._log(`[Debug] _setCitationCount: Final string for setField: '${finalExtraString}'`);
+    this._log(`[Info] _setCitationCount: Final 'extra' string to be set for item '${item.getField('title') || item.id}': "${finalExtraString}"`);
 
-    console.log('DEBUG setField about to be called:', { id: item.id, finalExtraString });
-    item.setField("extra", finalExtraString);
-    item.saveTx();
-    this._log(`[Debug] _setCitationCount: Exited for item '${item.getField('title') || item.id}'`);
+    try {
+      item.setField("extra", finalExtraString);
+      this._log(`[Info] _setCitationCount: Successfully called item.setField("extra", ...) for item '${item.getField('title') || item.id}'`);
+      item.saveTx();
+      this._log(`[Info] _setCitationCount: Successfully called item.saveTx() for item '${item.getField('title') || item.id}'`);
+    } catch (e) {
+      this._log(`[Error] _setCitationCount: Error during setField or saveTx for item '${item.getField('title') || item.id}': ${e.message}${e.stack ? '\nStack: ' + e.stack : ''}`);
+    }
+    this._log(`[Info] _setCitationCount: Exited for item '${item.getField('title') || item.id}'`);
   },
 
   /**
