@@ -153,67 +153,68 @@ describe('ZoteroCitationCounts - NASA ADS Integration Tests', function() {
       expect(nasaAdsApiObject, "NASA ADS API object not found").to.exist;
     });
 
-    it.only('Scenario 1: Successful fetch and update for NASA ADS (DOI)', async function() { // Added .only
+    it('Scenario 1: Successful fetch and update for NASA ADS (DOI)', function(done) { // MODIFIED: .only removed
       // Create mockItem after plugin code is loaded to ensure same context
       const mockItem = createMockItem(sandbox, '10.1234/test.doi');
       mockItems = [mockItem];
       mockGetSelectedItems.returns(mockItems);
       global.Zotero.Prefs.get.withArgs('extensions.citationcounts.nasaadsApiKey', true).returns('TEST_KEY');
       
+      // mockItem.setField.myUniqueMarker = "isThisTheSameStub"; // Marker can be removed or kept for diagnostics
+
       global.fetch.resolves({
         ok: true,
         status: 200,
         json: sinon.stub().resolves({ response: { docs: [{ citation_count: 42 }], numFound: 1 } }),
       });
 
-      let updateError = null;
-      try {
-        await global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject);
-      } catch (e) {
-        updateError = e;
-      }
-      // Removed confusing console.log for mockItem.setField.callCount
-      if (updateError) {
-        console.error('updateItems threw:', updateError);
-      }
+      // let updateError = null; // This variable might not be needed anymore with promise catch.
       
-      expect(global.fetch.calledOnce).to.be.true;
-      const fetchCall = global.fetch.getCall(0);
-      expect(fetchCall.args[0]).to.include('https://api.adsabs.harvard.edu/v1/search/query');
-      expect(fetchCall.args[0]).to.include('q=doi:10.1234%2Ftest.doi'); // URI encoded
-      expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
-      
-      // Accept both with and without trailing newline for robustness
-      const setFieldArgs = mockItem.setField.getCall(0)?.args;
-      expect(setFieldArgs, 'setField was not called').to.exist;
-      const expectedString = '42 citations (NASA ADS/DOI) [2023-01-01]';
-      expect(setFieldArgs[0]).to.equal('extra');
-      // Accept with or without trailing newline
-      expect(setFieldArgs[1] === expectedString || setFieldArgs[1] === expectedString + '\n', `setField value was '${setFieldArgs[1]}'`).to.be.true;
-      expect(mockItem.saveTx.calledOnce).to.be.true;
-      
-      expect(mockProgressWindowInstance.ItemProgress.calledOnce).to.be.true;
-      expect(mockItemProgressInstance.setIcon.calledWith(sinon.match(/tick/))).to.be.true; // Or specific icon path
-      expect(mockItemProgressInstance.setProgress.calledWith(100)).to.be.true;
+      global.ZoteroCitationCounts.updateItems(mockItems, nasaAdsApiObject)
+        .then(() => {
+          // All assertions are moved into the setTimeout
+          setTimeout(() => {
+            try {
+              // Fetch call assertions
+              expect(global.fetch.calledOnce).to.be.true;
+              const fetchCall = global.fetch.getCall(0);
+              expect(fetchCall.args[0]).to.include('https://api.adsabs.harvard.edu/v1/search/query');
+              expect(fetchCall.args[0]).to.include('q=doi:10.1234%2Ftest.doi');
+              expect(fetchCall.args[1].headers.Authorization).to.equal('Bearer TEST_KEY');
+              
+              // setField assertions
+              expect(mockItem.setField.callCount === 1, 'Expected setField.callCount to be 1, but was ' + mockItem.setField.callCount).to.be.true;
+              const expectedString = '42 citations (NASA ADS/DOI) [2023-01-01]';
+              const actualArg = mockItem.setField.getCall(0).args[1];
+              const checkResult = actualArg === expectedString || actualArg === expectedString + '\n';
+              expect(checkResult, `setField was called with: '${actualArg}', expected '${expectedString}' or '${expectedString}\n'`).to.be.true;
+              expect(mockItem.setField.calledWith('extra', actualArg)).to.be.true;
+              
+              // saveTx assertion
+              expect(mockItem.saveTx.calledOnce).to.be.true;
+              
+              // Progress window assertions
+              expect(mockProgressWindowInstance.ItemProgress.calledOnce).to.be.true;
+              expect(mockItemProgressInstance.setIcon.calledWith(sinon.match(/tick/))).to.be.true;
+              expect(mockItemProgressInstance.setProgress.calledWith(100)).to.be.true;
 
-      // Check for the initial debug log
-      sinon.assert.calledWithMatch(global.Zotero.debug, "Zotero Citation Counts: Entering updateItems for API: NASA ADS. Number of raw items: 1");
-      sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/DOI for item '${mockItem.id}'. Count: 42`);
+              // Debug log assertions
+              sinon.assert.calledWithMatch(global.Zotero.debug, "Zotero Citation Counts: Entering updateItems for API: NASA ADS. Number of raw items: 1");
+              sinon.assert.calledWithMatch(global.Zotero.debug, `Zotero Citation Counts: Successfully fetched citation count via NASA ADS/DOI for item '${mockItem.id}'. Count: 42`);
 
-      // Verify l10n calls for progress window headlines
-      // expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-headline', { api: 'NASA ADS' })).to.be.true; // Commented out
-      
-      console.log("l10n.formatValue.called:", global.ZoteroCitationCounts.l10n.formatValue.called);
-      console.log("l10n.formatValue.callCount:", global.ZoteroCitationCounts.l10n.formatValue.callCount);
-      if (global.ZoteroCitationCounts.l10n.formatValue.callCount > 0) {
-        console.log("l10n.formatValue first call args:", JSON.stringify(global.ZoteroCitationCounts.l10n.formatValue.getCall(0).args));
-      }
-      if (global.ZoteroCitationCounts.l10n.formatValue.callCount > 1) {
-        console.log("l10n.formatValue second call args:", JSON.stringify(global.ZoteroCitationCounts.l10n.formatValue.getCall(1).args));
-      }
-      expect(global.ZoteroCitationCounts.l10n.formatValue.called).to.be.true; // Temporary assertion
+              // L10n assertions
+              expect(global.ZoteroCitationCounts.l10n.formatValue.called).to.be.true;
+              expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-finished-headline', { api: 'NASA ADS' })).to.be.true;
 
-      expect(global.ZoteroCitationCounts.l10n.formatValue.calledWith('citationcounts-progresswindow-finished-headline', { api: 'NASA ADS' })).to.be.true;
+              done(); // Signal test completion
+            } catch (e) {
+              done(e); // Pass error to done if assertions fail
+            }
+          }, 0);
+        })
+        .catch(err => { // Catch errors from updateItems promise itself
+          done(err);
+        });
     });
 
     it('Scenario 2: NASA ADS API key error (401)', async function() {

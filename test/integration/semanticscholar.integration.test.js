@@ -429,16 +429,16 @@ describe("Semantic Scholar Integration Tests", () => {
       sinon.assert.calledWith(mockZotero.debug, sinon.match(`Bad API response for ${titleUrl}: status 500`));
     });
 
-    it.only("Scenario (User Feedback): OpenAI GPT-4.5 System Card - Title Search", async function() { // Added .only
+    it("Scenario (User Feedback): OpenAI GPT-4.5 System Card - Title Search", function(done) { // MODIFIED: No .only, function(done)
       mockItem = createMockItem(sandbox, {
         title: "OpenAI GPT-4.5 System Card",
         creators: [{ lastName: "Paino" }], 
         extra: "Some pre-existing unrelated content in extra field", 
       });
-      console.log("[Test Log] mockItem.uniqueTestID created in test:", mockItem.uniqueTestID); // Log ID in test
+      // console.log("[Test Log] mockItem.uniqueTestID created in test:", mockItem.uniqueTestID); // Log ID in test
       mockZotero.getActiveZoteroPane().getSelectedItems.returns([mockItem]);
 
-      const expectedQuery = "title:OpenAI%20GPT-4.5%20System%20Card%2Bauthor:Paino";
+      const expectedQuery = "title:OpenAI%20GPT-4.5%20System%20Card%2Bauthor:Paino"; // Removed year as it's not in mockItem creation for this test
       const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
 
       const mockApiResponse = {
@@ -455,22 +455,34 @@ describe("Semantic Scholar Integration Tests", () => {
         json: async () => mockApiResponse,
       });
 
-      await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
+      global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI)
+        .then(() => {
+            setTimeout(() => {
+                try {
+                    // console.logs for debugging this test can remain for now
+                    console.log("[Test Log] mockItem.setField.called:", mockItem.setField.called);
+                    console.log("[Test Log] mockItem.setField.callCount:", mockItem.setField.callCount);
+                    if (mockItem.setField.called) {
+                        console.log("[Test Log] mockItem.setField first call args:", JSON.stringify(mockItem.setField.getCall(0).args));
+                    }
 
-      console.log("[Test Log] mockItem.setField.called:", mockItem.setField.called);
-      console.log("[Test Log] mockItem.setField.callCount:", mockItem.setField.callCount);
-      if (mockItem.setField.called) {
-        console.log("[Test Log] mockItem.setField first call args:", JSON.stringify(mockItem.setField.getCall(0).args));
-      }
+                    // The primary assertion:
+                    sinon.assert.calledWith(mockItem.setField, 'extra', sinon.match(/^5 citations \(Semantic Scholar\/Title\)/));
+                    // Add other assertions if there were any for this test.
+                    // For example, check saveTx if that's relevant for this test
+                    // expect(mockItem.saveTx.calledOnce).to.be.true;
 
-      // Based on user report, this might fail or not be called as expected.
-      // The debug logs added to _setCitationCount will be crucial.
-      try {
-        sinon.assert.calledWith(mockItem.setField, 'extra', sinon.match(/^5 citations \(Semantic Scholar\/Title\)/));
-      } catch (e) {
-        console.error("Assertion Error for mockItem.setField:", e.message);
-        // Potentially re-throw or handle if the test framework doesn't log this well on its own
-      }
+                    done();
+                } catch (e) {
+                    console.error("Assertion Error during test:", e.message); // Keep this to see the error if it happens
+                    done(e);
+                }
+            }, 0);
+        })
+        .catch(err => {
+            console.error("Error from updateItems promise:", err);
+            done(err);
+        });
     });
   });
 });
