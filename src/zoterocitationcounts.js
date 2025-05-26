@@ -15,7 +15,7 @@ ZoteroCitationCounts = {
 
   _log(msg, level = "info") { // 默认为 info 级别
     let message = "Zotero Citation Counts: " + msg;
-    Zotero.log(message); // 输出到控制台
+    Zotero.debug(message); // 输出到控制台
     if (Zotero.Plugins && Zotero.Plugins.Utilities && typeof Zotero.Plugins.Utilities.log === 'function') {
       Zotero.Plugins.Utilities.log(message, level);
     } else {
@@ -342,7 +342,7 @@ ZoteroCitationCounts = {
 
     progressWindow.show();
 
-    this._updateItem(0, items, api, progressWindow, progressWindowItems);
+    await this._updateItem(0, items, api, progressWindow, progressWindowItems);
   },
 
   /**
@@ -417,7 +417,7 @@ ZoteroCitationCounts = {
     }
 
     this._log(`[Info] _updateItem: Moving to next item for API: ${api.name}`);
-    this._updateItem(
+    await this._updateItem(
       currentItemIndex + 1,
       items,
       api,
