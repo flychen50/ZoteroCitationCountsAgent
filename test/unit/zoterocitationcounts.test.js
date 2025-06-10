@@ -1,11 +1,8 @@
 const { expect } = require('chai');
 const sinon = require('sinon');
-const fs = require('fs');
-const path = require('path');
 
 describe('ZoteroCitationCounts', function() {
   let mockZoteroPrefsGet;
-  let zccCode;
   let originalFetch;
 
   beforeEach(function() {
@@ -27,12 +24,8 @@ describe('ZoteroCitationCounts', function() {
     // Stub fetch globally for most tests
     global.fetch = sinon.stub();
 
-    // Read the script content once
-    if (!zccCode) {
-      zccCode = fs.readFileSync(path.join(__dirname, '../../src/zoterocitationcounts.js'), 'utf-8');
-    }
-    
-    new Function('Zotero', zccCode)(global.Zotero);
+    // Require the main source file directly for coverage tracking  
+    global.ZoteroCitationCounts = require('../../src/zoterocitationcounts');
     
     // Ensure ZoteroCitationCounts.l10n is stubbed for tests that need it
     if (global.ZoteroCitationCounts && !global.ZoteroCitationCounts.l10n) {
