@@ -958,13 +958,13 @@ ZoteroCitationCounts = {
           id.year
         )}`;
       }
-      return `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(queryString)}&fields=citationCount,externalIds`;
+      return `https://api.semanticscholar.org/graph/v1/paper/search?query=${queryString}&fields=citationCount,externalIds`;
     } else {
       // Existing logic for DOI/ArXiv
       if (type === "doi") {
-        return `https://api.semanticscholar.org/graph/v1/paper/${encodeURIComponent(id)}?fields=citationCount`;
+        return `https://api.semanticscholar.org/graph/v1/paper/${id}?fields=citationCount`;
       } else { // arxiv
-        return `https://api.semanticscholar.org/graph/v1/paper/arXiv:${encodeURIComponent(id)}?fields=citationCount`;
+        return `https://api.semanticscholar.org/graph/v1/paper/arXiv:${id}?fields=citationCount`;
       }
     }
   },

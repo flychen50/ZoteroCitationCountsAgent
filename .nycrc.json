@@ -1,0 +1,21 @@
+{
+  "include": [
+    "src/**/*.js",
+    "bootstrap.js"
+  ],
+  "exclude": [
+    "test/**",
+    "node_modules/**",
+    "dist/**"
+  ],
+  "reporter": [
+    "text",
+    "html",
+    "lcov"
+  ],
+  "check-coverage": true,
+  "lines": 80,
+  "functions": 80,
+  "branches": 80,
+  "statements": 80
+}

@@ -42,23 +42,30 @@ describe("Semantic Scholar Integration Tests", () => {
   beforeEach(async () => {
     sandbox = sinon.createSandbox();
 
+    // Create the item progress instance that will be returned
+    const mockItemProgress = {
+      setIcon: sandbox.stub(),
+      setImage: sandbox.stub(),
+      setText: sandbox.stub(),
+      setProgress: sandbox.stub(),
+      setError: sandbox.stub(),
+    };
+
+    // Create the progress window instance that will be returned
+    const mockProgressWindow = {
+      changeHeadline: sandbox.stub(),
+      show: sandbox.stub(),
+      startCloseTimer: sandbox.stub(),
+      ItemProgress: sandbox.stub().returns(mockItemProgress),
+    };
+
     mockZotero = {
       Prefs: {
         get: sandbox.stub(),
         set: sandbox.stub(),
       },
       debug: sandbox.stub(),
-      ProgressWindow: sandbox.stub().returns({
-        changeHeadline: sandbox.stub(),
-        show: sandbox.stub(),
-        startCloseTimer: sandbox.stub(),
-        ItemProgress: sandbox.stub().returns({
-          setIcon: sandbox.stub(),
-          setText: sandbox.stub(),
-          setProgress: sandbox.stub(),
-          setError: sandbox.stub(),
-        }),
-      }),
+      ProgressWindow: sandbox.stub().returns(mockProgressWindow),
       getActiveZoteroPane: sandbox.stub().returns({
         getSelectedItems: sandbox.stub(), // Will be set per test
       }),
@@ -167,15 +174,16 @@ describe("Semantic Scholar Integration Tests", () => {
       const expectedUrl =
         "https://api.semanticscholar.org/graph/v1/paper/10.1000%2Fxyz123?fields=citationCount";
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, expectedUrl);
+      sinon.assert.calledWithExactly(global.fetch, expectedUrl, { headers: {} });
       sinon.assert.calledOnce(mockItem.setField);
       sinon.assert.calledWithExactly(mockItem.setField, "extra", `123 citations (Semantic Scholar/DOI) [${today}]\n`);
       sinon.assert.calledOnce(mockItem.saveTx);
       
-      const pwInstance = mockZotero.ProgressWindow(); 
-      const itemProgressInstance = pwInstance.ItemProgress(); 
+      sinon.assert.calledOnce(mockZotero.ProgressWindow);
+      const pwInstance = mockZotero.ProgressWindow.returnValues[0];
       sinon.assert.calledOnce(pwInstance.ItemProgress); 
-      sinon.assert.calledWith(itemProgressInstance.setIcon, global.ZoteroCitationCounts.icon("tick"));
+      const itemProgressInstance = pwInstance.ItemProgress.returnValues[0];
+      sinon.assert.calledWith(itemProgressInstance.setImage, global.ZoteroCitationCounts.icon("tick"));
       sinon.assert.calledWith(itemProgressInstance.setProgress, 100);
     });
 
@@ -197,7 +205,7 @@ describe("Semantic Scholar Integration Tests", () => {
       const expectedUrl =
         "https://api.semanticscholar.org/graph/v1/paper/arXiv:2101.00001?fields=citationCount";
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, expectedUrl);
+      sinon.assert.calledWithExactly(global.fetch, expectedUrl, { headers: {} });
       sinon.assert.calledOnce(mockItem.setField);
       sinon.assert.calledWithExactly(mockItem.setField, "extra", `456 citations (Semantic Scholar/arXiv) [${today}]\n`);
       sinon.assert.calledOnce(mockItem.saveTx);
@@ -233,7 +241,7 @@ describe("Semantic Scholar Integration Tests", () => {
       const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
       
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, expectedUrl);
+      sinon.assert.calledWithExactly(global.fetch, expectedUrl, { headers: {} });
       sinon.assert.calledOnce(mockItem.setField);
       sinon.assert.calledWithExactly(mockItem.setField, "extra", `42 citations (Semantic Scholar/Title) [${today}]\n`);
       sinon.assert.calledOnce(mockItem.saveTx);
@@ -259,12 +267,12 @@ describe("Semantic Scholar Integration Tests", () => {
       const expectedQuery = `title:${encodeURIComponent(title)}+author:${encodeURIComponent(author)}+year:${encodeURIComponent(year)}`;
       const expectedUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${expectedQuery}&fields=citationCount,externalIds`;
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, expectedUrl);
+      sinon.assert.calledWithExactly(global.fetch, expectedUrl, { headers: {} });
       sinon.assert.notCalled(mockItem.setField);
       sinon.assert.notCalled(mockItem.saveTx);
 
-      const pwInstance = mockZotero.ProgressWindow();
-      const itemProgressInstance = pwInstance.ItemProgress();
+      const pwInstance = mockZotero.ProgressWindow.returnValues[0];
+      const itemProgressInstance = pwInstance.ItemProgress.returnValues[0];
       sinon.assert.calledOnce(itemProgressInstance.setError);
       
       const formatValueStub = global.ZoteroCitationCounts.l10n.formatValue;
@@ -283,8 +291,8 @@ describe("Semantic Scholar Integration Tests", () => {
       sinon.assert.notCalled(mockItem.setField);
       sinon.assert.notCalled(mockItem.saveTx);
 
-      const pwInstance = mockZotero.ProgressWindow();
-      const itemProgressInstance = pwInstance.ItemProgress();
+      const pwInstance = mockZotero.ProgressWindow.returnValues[0];
+      const itemProgressInstance = pwInstance.ItemProgress.returnValues[0];
       sinon.assert.calledOnce(itemProgressInstance.setError);
       const formatValueStub = global.ZoteroCitationCounts.l10n.formatValue; 
       sinon.assert.calledWith(formatValueStub, "citationcounts-progresswindow-error-insufficient-metadata-for-title-search", { api: "Semantic Scholar" });
@@ -310,7 +318,7 @@ describe("Semantic Scholar Integration Tests", () => {
 
       const expectedDoiUrl = "https://api.semanticscholar.org/graph/v1/paper/10.1000%2Frealdoi?fields=citationCount";
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, expectedDoiUrl);
+      sinon.assert.calledWithExactly(global.fetch, expectedDoiUrl, { headers: {} });
       
       const titleQuery = "title%3AA%20Real%20Title%2Bauthor%3AAuthor%2Byear%3A2021";
       const expectedTitleUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${titleQuery}&fields=citationCount,externalIds`;
@@ -339,7 +347,7 @@ describe("Semantic Scholar Integration Tests", () => {
 
       const expectedArxivUrl = "https://api.semanticscholar.org/graph/v1/paper/arXiv:2202.00002?fields=citationCount";
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, expectedArxivUrl);
+      sinon.assert.calledWithExactly(global.fetch, expectedArxivUrl, { headers: {} });
 
       const titleQuery = "title%3AAn%20ArXiv%20Title%2Bauthor%3AScientist%2Byear%3A2022";
       const expectedTitleUrl = `https://api.semanticscholar.org/graph/v1/paper/search?query=${titleQuery}&fields=citationCount,externalIds`;
@@ -375,7 +383,7 @@ describe("Semantic Scholar Integration Tests", () => {
       await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
 
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, titleUrl);
+      sinon.assert.calledWithExactly(global.fetch, titleUrl, { headers: {} });
 
       sinon.assert.calledOnce(mockItem.setField);
       sinon.assert.calledWithExactly(mockItem.setField, "extra", `99 citations (Semantic Scholar/Title) [${today}]\n`);
@@ -410,12 +418,12 @@ describe("Semantic Scholar Integration Tests", () => {
       await global.ZoteroCitationCounts.updateItems([mockItem], semanticScholarAPI);
 
       sinon.assert.calledOnce(global.fetch);
-      sinon.assert.calledWithExactly(global.fetch, effectiveTitleUrl); 
+      sinon.assert.calledWithExactly(global.fetch, effectiveTitleUrl, { headers: {} }); 
       sinon.assert.notCalled(mockItem.setField);
       sinon.assert.notCalled(mockItem.saveTx);
 
-      const pwInstance = mockZotero.ProgressWindow();
-      const itemProgressInstance = pwInstance.ItemProgress();
+      const pwInstance = mockZotero.ProgressWindow.returnValues[0];
+      const itemProgressInstance = pwInstance.ItemProgress.returnValues[0];
       sinon.assert.calledOnce(itemProgressInstance.setError);
       const formatValueStub = global.ZoteroCitationCounts.l10n.formatValue;
       sinon.assert.calledWith(formatValueStub, "citationcounts-progresswindow-error-api-server-error", { api: "Semantic Scholar" });
