@@ -27,15 +27,19 @@ async function startup({ id, version, rootURI }) {
 
   itemObserver = Zotero.Notifier.registerObserver(
     {
-      notify: function (event, type, ids, extraData) {
+      notify: async function (event, type, ids, extraData) {
         if (event == "add") {
-          const pref = ZoteroCitationCounts.getPref("autoretrieve");
-          if (pref === "none") return;
+          try {
+            const pref = ZoteroCitationCounts.getPref("autoretrieve");
+            if (pref === "none") return;
 
-          const api = ZoteroCitationCounts.APIs.find((api) => api.key === pref);
-          if (!api) return;
+            const api = ZoteroCitationCounts.APIs.find((api) => api.key === pref);
+            if (!api) return;
 
-          ZoteroCitationCounts.updateItems(Zotero.Items.get(ids), api);
+            await ZoteroCitationCounts.updateItems(Zotero.Items.get(ids), api);
+          } catch (error) {
+            ZoteroCitationCounts._log(`Auto-retrieval error: ${error.message}`);
+          }
         }
       },
     },

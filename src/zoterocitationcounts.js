@@ -294,10 +294,17 @@ ZoteroCitationCounts = {
     const document = window.document;
 
     for (let id of this._addedElementIDs) {
-      document.getElementById(id)?.remove();
+      const element = document.getElementById(id);
+      if (element) {
+        element.remove();
+      }
     }
+    this._addedElementIDs = [];
 
-    document.querySelector('[href="citation-counts.ftl"]').remove();
+    const ftlElement = document.querySelector('[href="citation-counts.ftl"]');
+    if (ftlElement) {
+      ftlElement.remove();
+    }
   },
 
   /**
@@ -346,84 +353,76 @@ ZoteroCitationCounts = {
   },
 
   /**
-   * Updates citation counts recursively for a list of items.
+   * Updates citation counts iteratively for a list of items.
    *
-   * @param currentItemIndex - Index of currently updating Item. Zero-based.
+   * @param startIndex - Index to start processing from. Zero-based.
    * @param items - List of all Items to be updated in this operation.
    * @param api - API to be used to retrieve *items* citation counts.
    * @param progressWindow - ProgressWindow associated with this operation.
    * @param progressWindowItems - List of references to each Zotero.ItemProgress in *progressWindow*.
    */
   _updateItem: async function (
-    currentItemIndex,
+    startIndex,
     items,
     api, // This is an object from the APIs array
     progressWindow,
     progressWindowItems
   ) {
-    // Check if operation is done
-    if (currentItemIndex >= items.length) {
-      const headlineFinished = await this.l10n.formatValue(
-        "citationcounts-progresswindow-finished-headline",
-        { api: api.name } // api.name is correct here
-      );
-      progressWindow.changeHeadline(headlineFinished);
-      progressWindow.startCloseTimer(5000);
-      this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name}`);
-      return;
-    }
+    for (let currentItemIndex = startIndex; currentItemIndex < items.length; currentItemIndex++) {
+      const item = items[currentItemIndex];
+      const pwItem = progressWindowItems[currentItemIndex];
+      this._log(`[Info] _updateItem: Processing item ${currentItemIndex + 1}/${items.length}: '${item.getField('title') || item.id}' for API: ${api.name}`);
 
-    const item = items[currentItemIndex];
-    const pwItem = progressWindowItems[currentItemIndex];
-    this._log(`[Info] _updateItem: Processing item ${currentItemIndex + 1}/${items.length}: '${item.getField('title') || item.id}' for API: ${api.name}`);
+      try {
+        this._log(`[Info] _updateItem: Calling _retrieveCitationCount for item '${item.getField('title') || item.id}'`);
+        const [count, source] = await this._retrieveCitationCount(
+          item,
+          api.name, // Pass the API name
+          api.useDoi, // Pass DOI preference
+          api.useArxiv, // Pass ArXiv preference
+          api.methods.urlBuilder,
+          api.methods.responseCallback,
+          api.useTitleSearch // Pass title search preference
+        );
+        this._log(`[Info] _updateItem: _retrieveCitationCount returned for item '${item.getField('title') || item.id}'. Count: ${count}, Source: ${source}`);
 
-    try {
-      this._log(`[Info] _updateItem: Calling _retrieveCitationCount for item '${item.getField('title') || item.id}'`);
-      const [count, source] = await this._retrieveCitationCount(
-        item,
-        api.name, // Pass the API name
-        api.useDoi, // Pass DOI preference
-        api.useArxiv, // Pass ArXiv preference
-        api.methods.urlBuilder,
-        api.methods.responseCallback,
-        api.useTitleSearch // Pass title search preference
-      );
-      this._log(`[Info] _updateItem: _retrieveCitationCount returned for item '${item.getField('title') || item.id}'. Count: ${count}, Source: ${source}`);
+        this._log(`[Info] _updateItem: Calling _setCitationCount for item '${item.getField('title') || item.id}'`);
+        this._setCitationCount(item, source, count);
+        this._log(`[Info] _updateItem: _setCitationCount finished for item '${item.getField('title') || item.id}'`);
 
-      this._log(`[Info] _updateItem: Calling _setCitationCount for item '${item.getField('title') || item.id}'`);
-      this._setCitationCount(item, source, count);
-      this._log(`[Info] _updateItem: _setCitationCount finished for item '${item.getField('title') || item.id}'`);
-
-      pwItem.setImage(this.icon("tick")); // Changed setIcon to setImage
-      pwItem.setProgress(100);
-    } catch (error) {
-      this._log(`[Error] _updateItem: Error processing item '${item.getField('title') || item.id}': ${error.message}${error.stack ? '\nStack: ' + error.stack : ''}`);
-      pwItem.setError();
-      let errorMessageText = await this.l10n.formatValue(error.message, { api: api.name });
-      if (errorMessageText == null) { // Check for both null and undefined
-        this._log(`[Warning] _updateItem: l10n.formatValue returned null/undefined for error key '${error.message}'. Using fallback message.`);
-        // Attempt to get a generic fallback message, or use a hardcoded one.
-        let fallbackErrorMessage = await this.l10n.formatValue("citationcounts-progresswindow-error-unknown", { api: api.name });
-        if (fallbackErrorMessage == null) {
-            fallbackErrorMessage = `Error processing item (key: ${error.message || 'unknown'})`; // Hardcoded fallback
+        pwItem.setImage(this.icon("tick")); // Changed setIcon to setImage
+        pwItem.setProgress(100);
+      } catch (error) {
+        this._log(`[Error] _updateItem: Error processing item '${item.getField('title') || item.id}': ${error.message}${error.stack ? '\nStack: ' + error.stack : ''}`);
+        pwItem.setError();
+        let errorMessageText = await this.l10n.formatValue(error.message, { api: api.name });
+        if (errorMessageText == null) { // Check for both null and undefined
+          this._log(`[Warning] _updateItem: l10n.formatValue returned null/undefined for error key '${error.message}'. Using fallback message.`);
+          // Attempt to get a generic fallback message, or use a hardcoded one.
+          let fallbackErrorMessage = await this.l10n.formatValue("citationcounts-progresswindow-error-unknown", { api: api.name });
+          if (fallbackErrorMessage == null) {
+              fallbackErrorMessage = `Error processing item (key: ${error.message || 'unknown'})`; // Hardcoded fallback
+          }
+          errorMessageText = fallbackErrorMessage;
         }
-        errorMessageText = fallbackErrorMessage;
+        new progressWindow.ItemProgress(
+          this.icon("bullet_yellow"),
+          errorMessageText, // Use the potentially modified errorMessageText
+          pwItem
+        );
       }
-      new progressWindow.ItemProgress(
-        this.icon("bullet_yellow"),
-        errorMessageText, // Use the potentially modified errorMessageText
-        pwItem
-      );
+
+      this._log(`[Info] _updateItem: Moving to next item for API: ${api.name}`);
     }
 
-    this._log(`[Info] _updateItem: Moving to next item for API: ${api.name}`);
-    await this._updateItem(
-      currentItemIndex + 1,
-      items,
-      api,
-      progressWindow,
-      progressWindowItems
+    // All items processed
+    const headlineFinished = await this.l10n.formatValue(
+      "citationcounts-progresswindow-finished-headline",
+      { api: api.name } // api.name is correct here
     );
+    progressWindow.changeHeadline(headlineFinished);
+    progressWindow.startCloseTimer(5000);
+    this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name}`);
   },
 
   /**
@@ -508,16 +507,24 @@ ZoteroCitationCounts = {
       year: null,
     };
 
-    // Extract Title
+    // Extract Title with validation
     const title = item.getField("title");
-    if (title) {
-      metadata.title = title;
+    if (title && typeof title === 'string') {
+      // Trim whitespace and limit length to prevent API issues
+      let sanitizedTitle = title.trim();
+      if (sanitizedTitle.length > 1000) {
+        sanitizedTitle = sanitizedTitle.substring(0, 1000) + '...';
+      }
+      metadata.title = sanitizedTitle;
     }
 
-    // Extract Year
+    // Extract Year with validation
     let year = item.getField("year");
     if (year) {
-      metadata.year = String(year);
+      const yearStr = String(year);
+      if (/^\d{4}$/.test(yearStr)) {
+        metadata.year = yearStr;
+      }
     } else {
       const date = item.getField("date");
       if (date) {
@@ -528,18 +535,45 @@ ZoteroCitationCounts = {
       }
     }
 
-    // Extract Author's Last Name
+    // Extract Author's Last Name with validation
     const creators = item.getCreators();
     if (creators && creators.length > 0) {
       const firstCreator = creators[0];
-      if (firstCreator.lastName) {
-        metadata.author = firstCreator.lastName;
-      } else if (firstCreator.name) {
-        metadata.author = firstCreator.name; // Fallback to 'name' if 'lastName' is not available
+      let authorName = null;
+      if (firstCreator.lastName && typeof firstCreator.lastName === 'string') {
+        authorName = firstCreator.lastName.trim();
+      } else if (firstCreator.name && typeof firstCreator.name === 'string') {
+        authorName = firstCreator.name.trim(); // Fallback to 'name' if 'lastName' is not available
+      }
+      
+      if (authorName && authorName.length > 0) {
+        // Limit author name length and sanitize
+        if (authorName.length > 100) {
+          authorName = authorName.substring(0, 100);
+        }
+        metadata.author = authorName;
       }
     }
 
     return metadata;
+  },
+
+  /**
+   * Sanitize URLs for logging by removing sensitive information like API keys.
+   */
+  _sanitizeUrlForLogging: function (url) {
+    try {
+      const urlObj = new URL(url);
+      // Remove common sensitive parameters
+      urlObj.searchParams.delete('api_key');
+      urlObj.searchParams.delete('apikey');
+      urlObj.searchParams.delete('key');
+      urlObj.searchParams.delete('token');
+      return urlObj.toString();
+    } catch (error) {
+      // Fallback: simple regex replacement for malformed URLs
+      return url.replace(/[?&](api_key|apikey|key|token)=[^&]*/gi, '');
+    }
   },
 
   /**
@@ -557,37 +591,37 @@ ZoteroCitationCounts = {
       response = await fetch(url, { headers });
     } catch (networkError) {
       // Catch network errors (e.g., DNS resolution failure, server unreachable)
-      this._log(`Network error fetching ${url}: ${networkError.message}. Throwing 'citationcounts-progresswindow-error-network-issue'.`);
+      this._log(`Network error fetching ${this._sanitizeUrlForLogging(url)}: ${networkError.message}. Throwing 'citationcounts-progresswindow-error-network-issue'.`);
       throw new Error("citationcounts-progresswindow-error-network-issue");
     }
 
     if (!response.ok) {
       const status = response.status;
-      this._log(`Received non-ok HTTP status ${status} for ${url}.`);
+      this._log(`Received non-ok HTTP status ${status} for ${this._sanitizeUrlForLogging(url)}.`);
 
       if (url.includes("api.adsabs.harvard.edu") && (status === 401 || status === 403)) {
-        this._log(`NASA ADS API key error for ${url}: status ${status}. Throwing 'citationcounts-progresswindow-error-nasaads-apikey'.`);
+        this._log(`NASA ADS API key error for ${this._sanitizeUrlForLogging(url)}: status ${status}. Throwing 'citationcounts-progresswindow-error-nasaads-apikey'.`);
         throw new Error("citationcounts-progresswindow-error-nasaads-apikey");
       } else if (status === 400) {
-        this._log(`Bad request for ${url}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-bad-request'.`);
+        this._log(`Bad request for ${this._sanitizeUrlForLogging(url)}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-bad-request'.`);
         throw new Error("citationcounts-progresswindow-error-api-bad-request");
       } else if (status === 404) {
-        this._log(`Resource not found for ${url}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-not-found'.`);
+        this._log(`Resource not found for ${this._sanitizeUrlForLogging(url)}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-not-found'.`);
         throw new Error("citationcounts-progresswindow-error-api-not-found");
       } else if (status === 429) {
-        this._log(`Rate limit exceeded for ${url}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-rate-limit'.`);
+        this._log(`Rate limit exceeded for ${this._sanitizeUrlForLogging(url)}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-rate-limit'.`);
         throw new Error("citationcounts-progresswindow-error-api-rate-limit");
       } else if (status >= 500 && status < 600) {
-        this._log(`Server error for ${url}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-server-error'.`);
+        this._log(`Server error for ${this._sanitizeUrlForLogging(url)}: status ${status}. Throwing 'citationcounts-progresswindow-error-api-server-error'.`);
         throw new Error("citationcounts-progresswindow-error-api-server-error");
       } else if (status === 401 || status === 403) {
         // Generic auth error for non-NASA ADS APIs.
         // Consider creating a more specific key if this becomes common for other APIs with keys.
-        this._log(`Authentication/Authorization error for ${url}: status ${status}. Throwing 'citationcounts-progresswindow-error-bad-api-response' as fallback.`);
+        this._log(`Authentication/Authorization error for ${this._sanitizeUrlForLogging(url)}: status ${status}. Throwing 'citationcounts-progresswindow-error-bad-api-response' as fallback.`);
         throw new Error("citationcounts-progresswindow-error-bad-api-response");
       } else {
         // Default for other non-ok statuses
-        this._log(`Unhandled non-ok HTTP status ${status} for ${url}. Throwing 'citationcounts-progresswindow-error-bad-api-response'.`);
+        this._log(`Unhandled non-ok HTTP status ${status} for ${this._sanitizeUrlForLogging(url)}. Throwing 'citationcounts-progresswindow-error-bad-api-response'.`);
         throw new Error("citationcounts-progresswindow-error-bad-api-response");
       }
     }
@@ -596,12 +630,12 @@ ZoteroCitationCounts = {
       const jsonData = await response.json();
       const count = parseInt(await callback(jsonData)); // callback might be async
       if (!(Number.isInteger(count) && count >= 0)) {
-        this._log(`Invalid count received from callback for ${url}. Count: ${count}. Throwing 'citationcounts-progresswindow-error-no-citation-count'.`);
+        this._log(`Invalid count received from callback for ${this._sanitizeUrlForLogging(url)}. Count: ${count}. Throwing 'citationcounts-progresswindow-error-no-citation-count'.`);
         throw new Error("Invalid count"); // This will be caught and converted below
       }
       return count;
     } catch (error) { // Catches errors from response.json(), callback, parseInt, or the explicit "Invalid count" throw
-      this._log(`Error processing API response or invalid count for ${url}: ${error.message}.`);
+      this._log(`Error processing API response or invalid count for ${this._sanitizeUrlForLogging(url)}: ${error.message}.`);
       // If it's already a specific error we want to propagate (like NASA API key), rethrow it.
       // This check is important if the callback itself could throw a pre-formatted error.
       const specificErrorMessages = [
@@ -924,7 +958,7 @@ ZoteroCitationCounts = {
           id.year
         )}`;
       }
-      return `https://api.semanticscholar.org/graph/v1/paper/search?query=${queryString}&fields=citationCount,externalIds`;
+      return `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(queryString)}&fields=citationCount,externalIds`;
     } else {
       // Existing logic for DOI/ArXiv
       if (type === "doi") {
@@ -990,7 +1024,7 @@ ZoteroCitationCounts = {
         queryString += `year:${encodeURIComponent(id.year)} `;
       }
       queryString = queryString.trim(); // Remove trailing space
-      return `https://api.adsabs.harvard.edu/v1/search/query?q=${queryString}&fl=citation_count`;
+      return `https://api.adsabs.harvard.edu/v1/search/query?q=${encodeURIComponent(queryString)}&fl=citation_count`;
     }
     // Fallback or error handling if needed, though the problem description doesn't specify
     return ""; 
