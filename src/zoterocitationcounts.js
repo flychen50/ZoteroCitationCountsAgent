@@ -293,17 +293,31 @@ ZoteroCitationCounts = {
   removeFromWindow: function (window) {
     const document = window.document;
 
-    for (let id of this._addedElementIDs) {
-      const element = document.getElementById(id);
-      if (element) {
-        element.remove();
+    try {
+      for (let id of this._addedElementIDs) {
+        try {
+          const element = document.getElementById(id);
+          if (element) {
+            element.remove();
+          }
+        } catch (error) {
+          this._log(`Warning: Failed to remove element with id '${id}': ${error.message}`);
+        }
       }
-    }
-    this._addedElementIDs = [];
+      this._addedElementIDs = [];
 
-    const ftlElement = document.querySelector('[href="citation-counts.ftl"]');
-    if (ftlElement) {
-      ftlElement.remove();
+      try {
+        const ftlElement = document.querySelector('[href="citation-counts.ftl"]');
+        if (ftlElement) {
+          ftlElement.remove();
+        }
+      } catch (error) {
+        this._log(`Warning: Failed to remove FTL element: ${error.message}`);
+      }
+    } catch (error) {
+      this._log(`Error during window cleanup: ${error.message}`);
+      // Clear tracking array even if cleanup failed to prevent memory leaks
+      this._addedElementIDs = [];
     }
   },
 
