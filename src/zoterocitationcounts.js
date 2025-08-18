@@ -390,7 +390,7 @@ ZoteroCitationCounts = {
         this._setCitationCount(item, source, count);
         this._log(`[Info] _updateItem: _setCitationCount finished for item '${item.getField('title') || item.id}'`);
 
-        pwItem.setImage(this.icon("tick")); // Changed setIcon to setImage
+        pwItem.setIcon(this.icon("tick"));
         pwItem.setProgress(100);
       } catch (error) {
         this._log(`[Error] _updateItem: Error processing item '${item.getField('title') || item.id}': ${error.message}${error.stack ? '\nStack: ' + error.stack : ''}`);
