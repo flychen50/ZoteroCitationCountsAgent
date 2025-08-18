@@ -7,6 +7,7 @@ ZoteroCitationCounts = {
 
   l10n: null,
   APIs: [],
+  _rateLimitTimers: {}, // Track last request time per API
 
   /**
    * Track injected XULelements for removal upon mainWindowUnload.
@@ -50,6 +51,7 @@ ZoteroCitationCounts = {
         name: "Crossref",
         useDoi: true,
         useArxiv: false,
+        rateLimitMs: 1000, // 1 second between requests
         methods: {
           urlBuilder: this._crossrefUrl,
           responseCallback: this._crossrefCallback,
@@ -60,6 +62,7 @@ ZoteroCitationCounts = {
         name: "INSPIRE-HEP",
         useDoi: true,
         useArxiv: true,
+        rateLimitMs: 500, // 0.5 seconds between requests
         methods: {
           urlBuilder: this._inspireUrl,
           responseCallback: this._inspireCallback,
@@ -71,6 +74,7 @@ ZoteroCitationCounts = {
         useDoi: true,
         useArxiv: true,
         useTitleSearch: true,
+        rateLimitMs: 3000, // 3 seconds (existing rate limit)
         methods: {
           urlBuilder: this._semanticScholarUrl,
           responseCallback: this._semanticScholarCallback.bind(this),
@@ -82,6 +86,7 @@ ZoteroCitationCounts = {
         useDoi: true,
         useArxiv: true,
         useTitleSearch: false,
+        rateLimitMs: 1000, // 1 second between requests
         methods: {
           urlBuilder: this._nasaadsUrl,
           responseCallback: this._nasaadsCallback.bind(this),
@@ -382,7 +387,8 @@ ZoteroCitationCounts = {
           api.useArxiv, // Pass ArXiv preference
           api.methods.urlBuilder,
           api.methods.responseCallback,
-          api.useTitleSearch // Pass title search preference
+          api.useTitleSearch, // Pass title search preference
+          api // Pass full API config for rate limiting
         );
         this._log(`[Info] _updateItem: _retrieveCitationCount returned for item '${item.getField('title') || item.id}'. Count: ${count}, Source: ${source}`);
 
@@ -519,10 +525,17 @@ ZoteroCitationCounts = {
     if (title && typeof title === 'string') {
       // Trim whitespace and limit length to prevent API issues
       let sanitizedTitle = title.trim();
-      if (sanitizedTitle.length > 1000) {
-        sanitizedTitle = sanitizedTitle.substring(0, 1000) + '...';
+      if (sanitizedTitle.length === 0) {
+        // Empty title after trimming
+        metadata.title = null;
+      } else {
+        // Remove dangerous characters and limit length
+        sanitizedTitle = sanitizedTitle.replace(/[<>"\{\}\\]/g, '').replace(/\s+/g, ' ');
+        if (sanitizedTitle.length > 500) { // Reduced from 1000 for better API compatibility
+          sanitizedTitle = sanitizedTitle.substring(0, 500) + '...';
+        }
+        metadata.title = sanitizedTitle;
       }
-      metadata.title = sanitizedTitle;
     }
 
     // Extract Year with validation
@@ -554,15 +567,37 @@ ZoteroCitationCounts = {
       }
       
       if (authorName && authorName.length > 0) {
-        // Limit author name length and sanitize
-        if (authorName.length > 100) {
-          authorName = authorName.substring(0, 100);
+        // Sanitize and limit author name length
+        authorName = authorName.replace(/[<>"\{\}\\]/g, '').replace(/\s+/g, ' ');
+        if (authorName.length > 50) { // Reduced limit for author names
+          authorName = authorName.substring(0, 50);
         }
-        metadata.author = authorName;
+        if (authorName.trim().length > 0) {
+          metadata.author = authorName.trim();
+        }
       }
     }
 
     return metadata;
+  },
+
+  /**
+   * Apply rate limiting for an API based on its configuration
+   */
+  _applyRateLimit: async function (apiKey, rateLimitMs) {
+    if (!rateLimitMs || rateLimitMs <= 0) return;
+    
+    const now = Date.now();
+    const lastRequestTime = this._rateLimitTimers[apiKey] || 0;
+    const timeSinceLastRequest = now - lastRequestTime;
+    
+    if (timeSinceLastRequest < rateLimitMs) {
+      const waitTime = rateLimitMs - timeSinceLastRequest;
+      this._log(`Rate limiting ${apiKey}: waiting ${waitTime}ms`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    
+    this._rateLimitTimers[apiKey] = Date.now();
   },
 
   /**
@@ -586,7 +621,11 @@ ZoteroCitationCounts = {
   /**
    * Send a request to a specified url, handle response with specified callback, and return a validated integer.
    */
-  _sendRequest: async function (url, callback) {
+  _sendRequest: async function (url, callback, apiConfig = null) {
+    // Apply rate limiting if API config is provided
+    if (apiConfig && apiConfig.key && apiConfig.rateLimitMs) {
+      await this._applyRateLimit(apiConfig.key, apiConfig.rateLimitMs);
+    }
     let response;
     // Add Authorization header for NASA ADS
     const headers = {};
@@ -671,7 +710,8 @@ ZoteroCitationCounts = {
     useArxiv,
     urlFunction,
     requestCallback,
-    useTitleSearch // New parameter based on API config
+    useTitleSearch, // New parameter based on API config
+    apiConfig = null // Pass full API config for rate limiting
   ) {
     this._log(`[Debug] _retrieveCitationCount: Item '${item.getField('title') || item.id}' for API '${apiName}'. useDoi: ${useDoi}, useArxiv: ${useArxiv}, useTitleSearch: ${useTitleSearch}`);
     let doiError = null;
@@ -686,7 +726,8 @@ ZoteroCitationCounts = {
         this._log(`[Debug] DOI field obtained: '${doiField}'`);
         const count = await this._sendRequest(
           urlFunction(doiField, "doi"),
-          requestCallback
+          requestCallback,
+          apiConfig
         );
         this._log(`Successfully fetched citation count via ${apiName}/DOI for item '${item.getField('title') || item.id}'. Count: ${count}`);
         return [count, `${apiName}/DOI`];
@@ -707,7 +748,8 @@ ZoteroCitationCounts = {
         this._log(`[Debug] ArXiv field obtained: '${arxivField}'`);
         const count = await this._sendRequest(
           urlFunction(arxivField, "arxiv"),
-          requestCallback
+          requestCallback,
+          apiConfig
         );
         this._log(`Successfully fetched citation count via ${apiName}/arXiv for item '${item.getField('title') || item.id}'. Count: ${count}`);
         return [count, `${apiName}/arXiv`];
@@ -732,7 +774,8 @@ ZoteroCitationCounts = {
         try {
           const count = await this._sendRequest(
             urlFunction(metadata, "title_author_year"), // urlFunction will build the correct URL
-            requestCallback
+            requestCallback,
+            apiConfig
           );
           this._log(`Successfully fetched citation count via ${apiName}/Title for item '${item.getField('title') || item.id}'. Count: ${count}`);
           return [count, `${apiName}/Title`];
@@ -938,7 +981,10 @@ ZoteroCitationCounts = {
   },
 
   _crossrefCallback: function (response) {
-    return response["is-referenced-by-count"];
+    if (response && typeof response["is-referenced-by-count"] === "number") {
+      return response["is-referenced-by-count"];
+    }
+    return null; // Will be caught by parseInt validation in _sendRequest
   },
 
   _inspireUrl: function (id, type) {
@@ -946,7 +992,10 @@ ZoteroCitationCounts = {
   },
 
   _inspireCallback: function (response) {
-    return response["metadata"]["citation_count"];
+    if (response && response.metadata && typeof response.metadata.citation_count === "number") {
+      return response.metadata.citation_count;
+    }
+    return null; // Will be caught by parseInt validation in _sendRequest
   },
 
   _semanticScholarUrl: function (id, type) {
@@ -979,10 +1028,6 @@ ZoteroCitationCounts = {
   // The callback can be async if we want.
   _semanticScholarCallback: async function (response) {
     let count;
-
-    // throttle Semantic Scholar so we don't reach limit.
-    // This needs to be done before any return, regardless of path.
-    await new Promise((r) => setTimeout(r, 3000));
 
     if (response.data) {
       // Handle search results
@@ -1018,17 +1063,17 @@ ZoteroCitationCounts = {
   _nasaadsUrl: function (id, type, query_params) {
     // NASA ADS API key should be sent via HTTP header, not as a URL param
     if (type === "doi" || type === "arxiv") {
-      return `https://api.adsabs.harvard.edu/v1/search/query?q=${type}:${id}&fl=citation_count`;
+      return `https://api.adsabs.harvard.edu/v1/search/query?q=${encodeURIComponent(type + ":" + id)}&fl=citation_count`;
     } else if (type === "title_author_year") {
       let queryString = "";
       if (id && id.title) {
-        queryString += `title:"${encodeURIComponent(id.title)}" `;
+        queryString += `title:"${id.title}" `;
       }
       if (id && id.author) {
-        queryString += `author:"${encodeURIComponent(id.author)}" `;
+        queryString += `author:"${id.author}" `;
       }
       if (id && id.year) {
-        queryString += `year:${encodeURIComponent(id.year)} `;
+        queryString += `year:${id.year} `;
       }
       queryString = queryString.trim(); // Remove trailing space
       return `https://api.adsabs.harvard.edu/v1/search/query?q=${encodeURIComponent(queryString)}&fl=citation_count`;
@@ -1042,7 +1087,10 @@ ZoteroCitationCounts = {
       this._log(`NASA ADS query returned ${response.response.numFound} results. Using the first one.`);
     }
 
-    if (response.response && response.response.docs && response.response.docs.length > 0 && response.response.docs[0].hasOwnProperty('citation_count')) {
+    if (response && response.response && response.response.docs && 
+        response.response.docs.length > 0 && 
+        response.response.docs[0].hasOwnProperty('citation_count') &&
+        typeof response.response.docs[0].citation_count === "number") {
       return response.response.docs[0].citation_count;
     } else {
       this._log('NASA ADS response did not contain expected citation_count. Response: ' + JSON.stringify(response));
