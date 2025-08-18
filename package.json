@@ -5,7 +5,8 @@
     "build": "web-ext build --source-dir=. --artifacts-dir=dist --overwrite-dest -n zoterocitationcountsmanager-$(date +%Y%m%d).xpi --ignore-files bin/* node_modules/* package.json package-lock.json README.md LICENSE .git/* .github/* .gitignore dist/*",
     "test:unit": "nyc mocha test/unit/**/*.test.js",
     "test:integration": "mocha test/integration/**/*.test.js",
-    "test": "npm run test:unit && npm run test:integration"
+    "test:e2e": "mocha test/e2e/**/*.test.js --timeout 10000",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "devDependencies": {
     "chai": "^4.3.10",
