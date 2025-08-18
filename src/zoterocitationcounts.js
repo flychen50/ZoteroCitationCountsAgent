@@ -416,13 +416,20 @@ ZoteroCitationCounts = {
     }
 
     // All items processed
-    const headlineFinished = await this.l10n.formatValue(
-      "citationcounts-progresswindow-finished-headline",
-      { api: api.name } // api.name is correct here
-    );
-    progressWindow.changeHeadline(headlineFinished);
-    progressWindow.startCloseTimer(5000);
-    this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name}`);
+    try {
+      const headlineFinished = await this.l10n.formatValue(
+        "citationcounts-progresswindow-finished-headline",
+        { api: api.name } // api.name is correct here
+      );
+      progressWindow.changeHeadline(headlineFinished || `Finished getting ${api.name} citation counts.`);
+      progressWindow.startCloseTimer(5000);
+      this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name}`);
+    } catch (finishNotificationError) {
+      this._log(`[Warning] _updateItem: Error updating finish notification: ${finishNotificationError.message}. Using fallback.`);
+      progressWindow.changeHeadline(`Finished getting ${api.name} citation counts.`);
+      progressWindow.startCloseTimer(5000);
+      this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name} (with fallback notification)`);
+    }
   },
 
   /**
