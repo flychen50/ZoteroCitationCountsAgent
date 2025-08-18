@@ -183,7 +183,7 @@ describe("Semantic Scholar Integration Tests", () => {
       const pwInstance = mockZotero.ProgressWindow.returnValues[0];
       sinon.assert.calledOnce(pwInstance.ItemProgress); 
       const itemProgressInstance = pwInstance.ItemProgress.returnValues[0];
-      sinon.assert.calledWith(itemProgressInstance.setImage, global.ZoteroCitationCounts.icon("tick"));
+      sinon.assert.calledWith(itemProgressInstance.setIcon, global.ZoteroCitationCounts.icon("tick"));
       sinon.assert.calledWith(itemProgressInstance.setProgress, 100);
     });
 
