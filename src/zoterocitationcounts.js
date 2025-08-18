@@ -33,61 +33,15 @@ ZoteroCitationCounts = {
 
     this.l10n = new Localization(["citation-counts.ftl"]);
 
-    /**
-     * To add a new API:
-     * -----------------
-     * (1) Create a urlBuilder method on the ZoteroCitationCounts object. Args: urlencoded *id* and *idtype* ("doi" or "arxiv"). Return: URL for API request.
-     *
-     * (2) Create a responseCallback method on the ZoteroCitationCounts object. Args: *response* from api call. Return: citation count number.
-     *
-     * (3) Register the API here, and specify whether it works with doi, arxiv id or both.
-     *
-     * (4) for now, you also need to register the APIs key and name in "preferences.js" (important that they match the keys and names from below).
-     */
-    this.APIs = [
-      {
-        key: "crossref",
-        name: "Crossref",
-        useDoi: true,
-        useArxiv: false,
-        methods: {
-          urlBuilder: this._crossrefUrl,
-          responseCallback: this._crossrefCallback,
-        },
-      },
-      {
-        key: "inspire",
-        name: "INSPIRE-HEP",
-        useDoi: true,
-        useArxiv: true,
-        methods: {
-          urlBuilder: this._inspireUrl,
-          responseCallback: this._inspireCallback,
-        },
-      },
-      {
-        key: "semanticscholar",
-        name: "Semantic Scholar",
-        useDoi: true,
-        useArxiv: true,
-        useTitleSearch: true,
-        methods: {
-          urlBuilder: this._semanticScholarUrl,
-          responseCallback: this._semanticScholarCallback.bind(this),
-        },
-      },
-      {
-        key: "nasaads",
-        name: "NASA ADS",
-        useDoi: true,
-        useArxiv: true,
-        useTitleSearch: false,
-        methods: {
-          urlBuilder: this._nasaadsUrl,
-          responseCallback: this._nasaadsCallback.bind(this),
-        },
-      },
-    ];
+    // Initialize APIs from shared registry and add method bindings
+    this.APIs = ZoteroCitationCounts_Shared.getAllAPIs().map(api => ({
+      ...api,
+      methods: {
+        urlBuilder: this[`_${api.key}Url`],
+        responseCallback: this[`_${api.key}Callback`].bind ? 
+          this[`_${api.key}Callback`].bind(this) : this[`_${api.key}Callback`],
+      }
+    }));
 
     this._initialized = true;
   },
@@ -141,20 +95,15 @@ ZoteroCitationCounts = {
     parentID,
     eventListeners
   ) {
-    const element = document.createXULElement(elementType);
-    element.id = elementID;
-
-    Object.entries(elementAttributes || {})
-      .filter(([_, value]) => value !== null && value !== undefined)
-      .forEach(([key, value]) => element.setAttribute(key, value));
-
-    Object.entries(eventListeners || {}).forEach(([eventType, listener]) => {
-      element.addEventListener(eventType, listener);
-    });
-
-    document.getElementById(parentID).appendChild(element);
+    const element = ZoteroCitationCounts_Shared.injectXULElement(
+      document,
+      elementType,
+      elementID,
+      elementAttributes,
+      parentID,
+      eventListeners
+    );
     this._storeAddedElement(element);
-
     return element;
   },
 
@@ -422,12 +371,12 @@ ZoteroCitationCounts = {
         { api: api.name } // api.name is correct here
       );
       progressWindow.changeHeadline(headlineFinished || `Finished getting ${api.name} citation counts.`);
-      progressWindow.startCloseTimer(5000);
+      progressWindow.startCloseTimer(ZoteroCitationCounts_Shared.CONSTANTS.PROGRESS_WINDOW_CLOSE_DELAY);
       this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name}`);
     } catch (finishNotificationError) {
       this._log(`[Warning] _updateItem: Error updating finish notification: ${finishNotificationError.message}. Using fallback.`);
       progressWindow.changeHeadline(`Finished getting ${api.name} citation counts.`);
-      progressWindow.startCloseTimer(5000);
+      progressWindow.startCloseTimer(ZoteroCitationCounts_Shared.CONSTANTS.PROGRESS_WINDOW_CLOSE_DELAY);
       this._log(`[Info] _updateItem: Finished processing all items for API: ${api.name} (with fallback notification)`);
     }
   },
@@ -982,7 +931,7 @@ ZoteroCitationCounts = {
 
     // throttle Semantic Scholar so we don't reach limit.
     // This needs to be done before any return, regardless of path.
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, ZoteroCitationCounts_Shared.CONSTANTS.API_REQUEST_DELAY));
 
     if (response.data) {
       // Handle search results

@@ -1,6 +1,7 @@
 let ZoteroCitationCounts, itemObserver;
 
 async function startup({ id, version, rootURI }) {
+  Services.scriptloader.loadSubScript(rootURI + "src/shared.js");
   Services.scriptloader.loadSubScript(rootURI + "src/zoterocitationcounts.js");
 
   ZoteroCitationCounts.init({ id, version, rootURI });
@@ -11,9 +12,9 @@ async function startup({ id, version, rootURI }) {
     label: await ZoteroCitationCounts.l10n.formatValue(
       "citationcounts-preference-pane-label"
     ),
-    image: ZoteroCitationCounts.icon("edit-list-order", false),
+    image: ZoteroCitationCounts.icon(ZoteroCitationCounts_Shared.CONSTANTS.PREFERENCE_ICON, false),
     src: "preferences.xhtml",
-    scripts: ["src/preferences.js"],
+    scripts: ["src/shared.js", "src/preferences.js"],
   });
 
   await Zotero.ItemTreeManager.registerColumns({
