@@ -476,12 +476,301 @@ describe('ZoteroCitationCounts', function() {
   });
   
   // Keep existing API specific URL and Callback tests
+  describe('init', function() {
+    beforeEach(function() {
+      global.Localization = sinon.stub().returns({
+        formatValue: sinon.stub()
+      });
+      // Reset initialization state before each test
+      global.ZoteroCitationCounts._initialized = false;
+    });
+    
+    it('should initialize the plugin with provided parameters', function() {
+      const params = {
+        id: 'test-plugin-id',
+        version: '1.0.0',
+        rootURI: 'chrome://test/'
+      };
+      
+      global.ZoteroCitationCounts.init(params);
+      
+      expect(global.ZoteroCitationCounts.pluginID).to.equal(params.id);
+      expect(global.ZoteroCitationCounts.pluginVersion).to.equal(params.version);
+      expect(global.ZoteroCitationCounts.rootURI).to.equal(params.rootURI);
+      expect(global.ZoteroCitationCounts._initialized).to.be.true;
+    });
+
+    it('should not reinitialize if already initialized', function() {
+      const params1 = { id: 'test1', version: '1.0', rootURI: 'chrome://test1/' };
+      const params2 = { id: 'test2', version: '2.0', rootURI: 'chrome://test2/' };
+      
+      global.ZoteroCitationCounts.init(params1);
+      global.ZoteroCitationCounts.init(params2);
+      
+      expect(global.ZoteroCitationCounts.pluginID).to.equal(params1.id);
+    });
+  });
+
+  describe('getPref', function() {
+    it('should return preference value from Zotero', function() {
+      mockZoteroPrefsGet.returns('test-value');
+      
+      const result = global.ZoteroCitationCounts.getPref('test-pref');
+      
+      sinon.assert.calledWith(mockZoteroPrefsGet, 'extensions.citationcounts.test-pref');
+      expect(result).to.equal('test-value');
+    });
+  });
+
+  describe('setPref', function() {
+    it('should set preference value in Zotero', function() {
+      global.ZoteroCitationCounts.setPref('test-pref', 'test-value');
+      
+      sinon.assert.calledWith(global.Zotero.Prefs.set, 'extensions.citationcounts.test-pref', 'test-value', true);
+    });
+  });
+
+  describe('icon', function() {
+    beforeEach(function() {
+      global.Zotero = { 
+        ...global.Zotero,
+        hiDPI: false  // Default to false
+      };
+    });
+
+    it('should return correct icon path for normal resolution', function() {
+      const result = global.ZoteroCitationCounts.icon('tick');
+      expect(result).to.equal('chrome://zotero/skin/tick.png');
+    });
+
+    it('should return correct icon path for hiDPI when Zotero.hiDPI is true', function() {
+      global.Zotero.hiDPI = true;
+      const result = global.ZoteroCitationCounts.icon('tick', true);
+      expect(result).to.equal('chrome://zotero/skin/tick@2x.png');
+    });
+
+    it('should return normal resolution path when hiDPI requested but Zotero.hiDPI is false', function() {
+      global.Zotero.hiDPI = false;
+      const result = global.ZoteroCitationCounts.icon('tick', true);
+      expect(result).to.equal('chrome://zotero/skin/tick.png');
+    });
+  });
+
+  describe('_sanitizeUrlForLogging', function() {
+    it('should remove API key from NASA ADS URL', function() {
+      const url = 'https://api.adsabs.harvard.edu/v1/search?api_key=secret123&q=test';
+      const result = global.ZoteroCitationCounts._sanitizeUrlForLogging(url);
+      expect(result).to.equal('https://api.adsabs.harvard.edu/v1/search?q=test');
+    });
+
+    it('should remove multiple sensitive parameters', function() {
+      const url = 'https://example.com/api?api_key=secret&token=abc123&q=test';
+      const result = global.ZoteroCitationCounts._sanitizeUrlForLogging(url);
+      expect(result).to.equal('https://example.com/api?q=test');
+    });
+
+    it('should return original URL if no sensitive data', function() {
+      const url = 'https://api.crossref.org/works/10.1000/test';
+      const result = global.ZoteroCitationCounts._sanitizeUrlForLogging(url);
+      expect(result).to.equal(url);
+    });
+  });
+
+  describe('_inspireUrl', function() {
+    it('should construct the correct URL for DOI', function() {
+      const result = global.ZoteroCitationCounts._inspireUrl('10.1000/test', 'doi');
+      expect(result).to.equal('https://inspirehep.net/api/doi/10.1000/test');
+    });
+
+    it('should construct the correct URL for arXiv', function() {
+      const result = global.ZoteroCitationCounts._inspireUrl('1234.5678', 'arxiv');
+      expect(result).to.equal('https://inspirehep.net/api/arxiv/1234.5678');
+    });
+  });
+
+  describe('_inspireCallback', function() {
+    it('should extract citation count from valid response', function() {
+      const response = { metadata: { citation_count: 42 } };
+      const result = global.ZoteroCitationCounts._inspireCallback(response);
+      expect(result).to.equal(42);
+    });
+  });
+
+  describe('_semanticScholarUrl', function() {
+    it('should construct URL for DOI search', function() {
+      const result = global.ZoteroCitationCounts._semanticScholarUrl('10.1000/test', 'doi');
+      expect(result).to.equal('https://api.semanticscholar.org/graph/v1/paper/10.1000/test?fields=citationCount');
+    });
+
+    it('should construct URL for arXiv search', function() {
+      const result = global.ZoteroCitationCounts._semanticScholarUrl('1234.5678', 'arxiv');
+      expect(result).to.equal('https://api.semanticscholar.org/graph/v1/paper/arXiv:1234.5678?fields=citationCount');
+    });
+
+    it('should construct URL for title/author/year search', function() {
+      const metadata = { title: 'Test Paper', author: 'Smith', year: '2024' };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.include('https://api.semanticscholar.org/graph/v1/paper/search');
+      expect(result).to.include('title%3ATest%2520Paper');
+      expect(result).to.include('author%3ASmith');
+      expect(result).to.include('year%3A2024');
+    });
+  });
+
+  describe('_nasaadsUrl', function() {
+    it('should construct URL for DOI search', function() {
+      const result = global.ZoteroCitationCounts._nasaadsUrl('10.1000/test', 'doi');
+      expect(result).to.equal('https://api.adsabs.harvard.edu/v1/search/query?q=doi:10.1000/test&fl=citation_count');
+    });
+
+    it('should construct URL for arXiv search', function() {
+      const result = global.ZoteroCitationCounts._nasaadsUrl('1234.5678', 'arxiv');
+      expect(result).to.equal('https://api.adsabs.harvard.edu/v1/search/query?q=arxiv:1234.5678&fl=citation_count');
+    });
+
+    it('should construct URL for title/author/year search', function() {
+      const metadata = { title: 'Test Paper', author: 'Smith', year: '2024' };
+      const result = global.ZoteroCitationCounts._nasaadsUrl(metadata, 'title_author_year');
+      expect(result).to.include('https://api.adsabs.harvard.edu/v1/search/query');
+      expect(result).to.include('title%3A%22Test%2520Paper%22');
+      expect(result).to.include('author%3A%22Smith%22');
+      expect(result).to.include('year%3A2024');
+    });
+
+    it('should return empty string for unknown type', function() {
+      const result = global.ZoteroCitationCounts._nasaadsUrl('test-id', 'unknown_type');
+      expect(result).to.equal('');
+    });
+  });
+
+  describe('_nasaadsCallback', function() {
+    beforeEach(function() {
+      global.ZoteroCitationCounts._log = sinon.stub();
+    });
+
+    it('should extract citation count from valid response', function() {
+      const response = {
+        response: {
+          numFound: 1,
+          docs: [{ citation_count: 42 }]
+        }
+      };
+      const result = global.ZoteroCitationCounts._nasaadsCallback(response);
+      expect(result).to.equal(42);
+    });
+
+    it('should log warning for multiple results', function() {
+      const response = {
+        response: {
+          numFound: 3,
+          docs: [{ citation_count: 42 }]
+        }
+      };
+      const result = global.ZoteroCitationCounts._nasaadsCallback(response);
+      expect(result).to.equal(42);
+      sinon.assert.calledWith(global.ZoteroCitationCounts._log, 'NASA ADS query returned 3 results. Using the first one.');
+    });
+
+    it('should return null if no citation_count in response', function() {
+      const response = {
+        response: {
+          numFound: 1,
+          docs: [{ title: 'test paper' }]
+        }
+      };
+      const result = global.ZoteroCitationCounts._nasaadsCallback(response);
+      expect(result).to.be.null;
+      sinon.assert.called(global.ZoteroCitationCounts._log);
+    });
+
+    it('should return null if no docs in response', function() {
+      const response = {
+        response: {
+          numFound: 0,
+          docs: []
+        }
+      };
+      const result = global.ZoteroCitationCounts._nasaadsCallback(response);
+      expect(result).to.be.null;
+    });
+  });
+
+  describe('_semanticScholarCallback', function() {
+    let clock;
+
+    beforeEach(function() {
+      global.ZoteroCitationCounts._log = sinon.stub();
+      // Mock setTimeout to avoid 3 second delay
+      clock = sinon.useFakeTimers();
+    });
+
+    afterEach(function() {
+      clock.restore();
+    });
+
+    it('should handle direct DOI/arXiv response', async function() {
+      const response = { citationCount: 42 };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(response);
+      clock.tick(3000); // Fast forward through the setTimeout
+      const result = await promise;
+      expect(result).to.equal(42);
+    });
+
+    it('should handle search results with data array', async function() {
+      const response = {
+        data: [
+          { citationCount: 15 },
+          { citationCount: 30 }
+        ]
+      };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(response);
+      clock.tick(3000);
+      const result = await promise;
+      expect(result).to.equal(15);
+      sinon.assert.calledWith(global.ZoteroCitationCounts._log, 'Semantic Scholar query returned 2 results. Using the first one.');
+    });
+
+    it('should return null for search with no results', async function() {
+      const response = { data: [] };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(response);
+      clock.tick(3000);
+      const result = await promise;
+      expect(result).to.be.null;
+    });
+
+    it('should return null for search with null citationCount', async function() {
+      const response = { data: [{ citationCount: null }] };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(response);
+      clock.tick(3000);
+      const result = await promise;
+      expect(result).to.be.null;
+      sinon.assert.called(global.ZoteroCitationCounts._log);
+    });
+
+    it('should return null for direct response with null citationCount', async function() {
+      const response = { citationCount: null };
+      const promise = global.ZoteroCitationCounts._semanticScholarCallback(response);
+      clock.tick(3000);
+      const result = await promise;
+      expect(result).to.be.null;
+      sinon.assert.called(global.ZoteroCitationCounts._log);
+    });
+  });
+
   describe('_crossrefUrl', function() {
     it('should construct the correct URL for Crossref API', function() {
       const id = '10.1000/xyz123';
       const actualUrl = global.ZoteroCitationCounts._crossrefUrl(id, 'doi');
       const expectedUrl = `https://api.crossref.org/works/${id}/transform/application/vnd.citationstyles.csl+json`;
       expect(actualUrl).to.equal(expectedUrl);
+    });
+  });
+
+  describe('_crossrefCallback', function() {
+    it('should extract citation count from Crossref response', function() {
+      const response = { "is-referenced-by-count": 25 };
+      const result = global.ZoteroCitationCounts._crossrefCallback(response);
+      expect(result).to.equal(25);
     });
   });
 });

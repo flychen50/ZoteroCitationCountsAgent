@@ -23,9 +23,11 @@ npm run test
 ```
 
 ### Testing Framework
-- **Unit tests**: Mocha + Chai + Sinon with NYC coverage
+- **Unit tests**: Mocha + Chai + Sinon with NYC coverage (80% threshold required)
 - **Integration tests**: API-specific testing for each citation service
 - **Mocking**: Comprehensive Zotero API mocking in unit tests
+- **Single test execution**: Use `npx mocha test/unit/zoterocitationcounts.test.js` or `npx mocha test/integration/crossref.integration.test.js`
+- **Coverage reporting**: NYC generates coverage reports automatically
 
 ## Project Architecture
 
@@ -75,3 +77,26 @@ Follow the established pattern in `src/zoterocitationcounts.js`:
 - Context menu injection for manual retrieval
 - Preference system integration using Zotero's APIs
 - Item monitoring through Zotero's notification system
+
+## Development Workflow
+
+### Release Process
+The project uses both npm scripts and shell scripts for building:
+- **npm build**: Creates timestamped .xpi files in `dist/` directory using web-ext
+- **bin/build**: Creates versioned .xpi files (v2.0) using direct zip compression
+- **GitHub Actions**: Automated testing on push/PR with Node.js 18.x
+
+### File Structure
+```
+src/                    # Main source code
+├── zoterocitationcounts.js  # Core plugin logic
+├── preferences.js      # Preferences handling
+└── prefs.js           # Preference definitions
+test/
+├── unit/              # Unit tests with mocking
+└── integration/       # Live API integration tests
+locale/en-US/          # Fluent localization files
+```
+
+### NASA ADS API Key Configuration
+NASA ADS requires API key setup through Zotero preferences. The key is stored securely and used for DOI/arXiv lookups as well as fallback title/author/year searches when identifiers are missing.
