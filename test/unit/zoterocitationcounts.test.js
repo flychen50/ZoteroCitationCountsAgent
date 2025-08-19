@@ -18,6 +18,7 @@ describe('ZoteroCitationCounts', function() {
       },
       debug: sinon.stub(), // Mock for this._log
       ProgressWindow: sinon.stub(), // Will be further customized in specific tests
+      getMainWindows: sinon.stub(), // Mock for window iteration
       // ... other necessary Zotero mocks
     };
     
@@ -88,6 +89,16 @@ describe('ZoteroCitationCounts', function() {
       mockItem.getField.withArgs('extra').returns('Just some random notes\nNo citation info here');
       expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('-');
     });
+
+    it('should return the citation count string if "X citations" exists', function() {
+      mockItem.getField.withArgs('extra').returns('123 citations (Crossref)\nSome other data');
+      expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('123');
+    });
+
+    it('should return "-" if extra field is null', function() {
+        mockItem.getField.withArgs('extra').returns(null);
+        expect(global.ZoteroCitationCounts.getCitationCount(mockItem)).to.equal('-');
+    });
   });
 
   describe('_setCitationCount', function() {
@@ -111,15 +122,32 @@ describe('ZoteroCitationCounts', function() {
     it('should add citation count to an empty extra field', function() {
       mockItem.getField.withArgs('extra').returns('');
       global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 123);
+      // The function adds a newline if the original field was empty due to how .split('') works.
       const expectedExtra = '123 citations (TestSource) [2024-01-15]\n';
-      if (!mockItem.setField.called) {
-        console.error('setField was not called!');
-      } else {
-        console.log('setField call args:', mockItem.setField.getCall(0).args);
-      }
-      expect(mockItem.setField.calledOnce).to.be.true;
-      expect(mockItem.setField.getCall(0).args[0]).to.equal('extra');
-      expect(mockItem.setField.getCall(0).args[1]).to.equal(expectedExtra);
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+
+    it('should update an existing citation count for the same source', function() {
+      mockItem.getField.withArgs('extra').returns('10 citations (TestSource) [2023-01-01]\nOther data');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 123);
+      const expectedExtra = '123 citations (TestSource) [2024-01-15]\nOther data';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+
+    it('should add a new citation count when others exist', function() {
+      mockItem.getField.withArgs('extra').returns('10 citations (OtherSource) [2023-01-01]');
+      global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 123);
+      const expectedExtra = '123 citations (TestSource) [2024-01-15]\n10 citations (OtherSource) [2023-01-01]';
+      expect(mockItem.setField.calledOnceWith('extra', expectedExtra)).to.be.true;
+    });
+
+    it('should handle errors during save gracefully', function() {
+        mockItem.getField.withArgs('extra').returns('');
+        const saveError = new Error('Failed to save');
+        mockItem.saveTx.throws(saveError);
+        // The function should not throw, but it should log the error.
+        expect(() => global.ZoteroCitationCounts._setCitationCount(mockItem, 'TestSource', 123)).to.not.throw();
+        expect(global.Zotero.debug.calledWith(sinon.match(/Error during setField or saveTx/))).to.be.true;
     });
   });
 
@@ -159,6 +187,27 @@ describe('ZoteroCitationCounts', function() {
       mockItem.getCreators.returns([{ lastName: 'Doe', creatorType: 'author' }]);
       const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
       expect(metadata).to.deep.equal({ title: 'Test Title', author: 'Doe', year: '2023' });
+    });
+
+    it('should extract year from date field if year is missing', function() {
+      mockItem.getField.withArgs('year').returns(null);
+      mockItem.getField.withArgs('date').returns('2022-05-10');
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata.year).to.equal('2022');
+    });
+
+    it('should use creator name if lastName is missing', function() {
+      mockItem.getCreators.returns([{ name: 'The whole name', creatorType: 'author' }]);
+      const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+      expect(metadata.author).to.equal('The whole name');
+    });
+
+    it('should handle empty title, author, or year', function() {
+        mockItem.getField.withArgs('title').returns(null);
+        mockItem.getField.withArgs('year').returns(null);
+        mockItem.getCreators.returns([]);
+        const metadata = global.ZoteroCitationCounts._getItemMetadataForAdsQuery(mockItem);
+        expect(metadata).to.deep.equal({ title: null, author: null, year: null });
     });
   });
 
@@ -615,6 +664,54 @@ describe('ZoteroCitationCounts', function() {
       expect(result).to.include('author%3ASmith');
       expect(result).to.include('year%3A2024');
     });
+
+    it('should construct URL for author and year only to cover branch', function() {
+      const metadata = { author: 'Smith', year: '2024' };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.not.include('title');
+      expect(result).to.include('author%3ASmith');
+      expect(result).to.include('%2Byear%3A2024'); // Check for the '+' separator
+    });
+
+    it('should construct URL for title and year only to cover branch', function() {
+      const metadata = { title: 'Test Paper', year: '2024' };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.include('title%3ATest%2520Paper');
+      expect(result).to.not.include('author');
+      expect(result).to.include('%2Byear%3A2024');
+    });
+
+    it('should construct URL for author only to cover branch', function() {
+      const metadata = { author: 'Smith' };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.include('author%3ASmith');
+      expect(result).to.not.include('title');
+      expect(result).to.not.include('year');
+    });
+
+    it('should construct URL for author and year only to cover branch', function() {
+      const metadata = { title: null, author: 'Smith', year: '2024' };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.not.include('title');
+      expect(result).to.include('author%3ASmith');
+      expect(result).to.include('%2Byear%3A2024'); // Check for '+'
+    });
+
+    it('should construct URL for title and year only to cover branch', function() {
+      const metadata = { title: 'Test Paper', author: null, year: '2024' };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.include('title%3ATest%2520Paper');
+      expect(result).to.not.include('author');
+      expect(result).to.include('%2Byear%3A2024'); // Check for '+'
+    });
+
+     it('should construct URL for author only to cover branch', function() {
+      const metadata = { title: null, author: 'Smith', year: null };
+      const result = global.ZoteroCitationCounts._semanticScholarUrl(metadata, 'title_author_year');
+      expect(result).to.not.include('title');
+      expect(result).to.include('author%3ASmith');
+      expect(result).to.not.include('year');
+    });
   });
 
   describe('_nasaadsUrl', function() {
@@ -637,6 +734,38 @@ describe('ZoteroCitationCounts', function() {
       expect(result).to.include('year%3A2024');
     });
 
+    it('should construct URL for title only to cover branches', function() {
+      const metadata = { title: 'Test Paper' };
+      const result = global.ZoteroCitationCounts._nasaadsUrl(metadata, 'title_author_year');
+      expect(result).to.include('title%3A%22Test%2520Paper%22');
+      expect(result).to.not.include('author');
+      expect(result).to.not.include('year');
+    });
+
+    it('should construct URL for author and year only to cover branches', function() {
+      const metadata = { author: 'Smith', year: '2024' };
+      const result = global.ZoteroCitationCounts._nasaadsUrl(metadata, 'title_author_year');
+      expect(result).to.not.include('title');
+      expect(result).to.include('author%3A%22Smith%22');
+      expect(result).to.include('year%3A2024');
+    });
+
+    it('should construct URL for title only to cover branches', function() {
+        const metadata = { title: 'Test Paper', author: null, year: null };
+        const result = global.ZoteroCitationCounts._nasaadsUrl(metadata, 'title_author_year');
+        expect(result).to.include('title%3A%22Test%2520Paper%22');
+        expect(result).to.not.include('author');
+        expect(result).to.not.include('year');
+    });
+
+    it('should construct URL for author and year only to cover branches', function() {
+        const metadata = { title: null, author: 'Smith', year: '2024' };
+        const result = global.ZoteroCitationCounts._nasaadsUrl(metadata, 'title_author_year');
+        expect(result).to.not.include('title');
+        expect(result).to.include('author%3A%22Smith%22');
+        expect(result).to.include('year%3A2024');
+    });
+
     it('should return empty string for unknown type', function() {
       const result = global.ZoteroCitationCounts._nasaadsUrl('test-id', 'unknown_type');
       expect(result).to.equal('');
@@ -645,7 +774,7 @@ describe('ZoteroCitationCounts', function() {
 
   describe('_nasaadsCallback', function() {
     beforeEach(function() {
-      global.ZoteroCitationCounts._log = sinon.stub();
+      sinon.stub(global.ZoteroCitationCounts, '_log');
     });
 
     it('should extract citation count from valid response', function() {
@@ -699,7 +828,7 @@ describe('ZoteroCitationCounts', function() {
     let clock;
 
     beforeEach(function() {
-      global.ZoteroCitationCounts._log = sinon.stub();
+      sinon.stub(global.ZoteroCitationCounts, '_log');
       // Mock the preference to return 3000ms for consistent test behavior
       mockZoteroPrefsGet.withArgs('extensions.citationcounts.semanticScholarRateLimitMs', true).returns(3000);
       // Mock setTimeout to avoid 3 second delay
@@ -757,6 +886,27 @@ describe('ZoteroCitationCounts', function() {
       expect(result).to.be.null;
       sinon.assert.called(global.ZoteroCitationCounts._log);
     });
+
+    // TODO: This test is skipped because of an intractable issue with async functions and sinon.useFakeTimers().
+    // The promise returned by the async _semanticScholarCallback function does not resolve when timers are faked,
+    // causing the test to time out, even when using standard workarounds like done callbacks or clock.tickAsync().
+    it.skip('should not wait if rate limit preference is 0', function(done) {
+      mockZoteroPrefsGet.withArgs('extensions.citationcounts.semanticScholarRateLimitMs', true).returns(0);
+      const setTimeoutSpy = sinon.spy(clock, 'setTimeout');
+      const response = { citationCount: 42 };
+
+      global.ZoteroCitationCounts._semanticScholarCallback(response)
+        .then(result => {
+          try {
+            expect(result).to.equal(42);
+            expect(setTimeoutSpy.called).to.be.false;
+            done();
+          } catch(e) {
+            done(e);
+          }
+        })
+        .catch(done);
+    });
   });
 
   describe('_crossrefUrl', function() {
@@ -773,6 +923,260 @@ describe('ZoteroCitationCounts', function() {
       const response = { "is-referenced-by-count": 25 };
       const result = global.ZoteroCitationCounts._crossrefCallback(response);
       expect(result).to.equal(25);
+    });
+  });
+
+  describe('UI Logic', function() {
+    let mockDocument, mockWindow, mockElement;
+    let ZoteroCitationCounts;
+
+    beforeEach(function() {
+      ZoteroCitationCounts = global.ZoteroCitationCounts;
+      ZoteroCitationCounts._addedElementIDs = []; // Reset stored elements
+
+      mockElement = {
+        id: '',
+        setAttribute: sinon.stub(),
+        addEventListener: sinon.stub(),
+        appendChild: sinon.stub(),
+        remove: sinon.stub(),
+      };
+
+      mockDocument = {
+        getElementById: sinon.stub().returns(mockElement),
+        createXULElement: sinon.stub().returns(mockElement),
+        querySelector: sinon.stub().returns(mockElement),
+      };
+
+      mockWindow = {
+        document: mockDocument,
+        MozXULElement: {
+          insertFTLIfNeeded: sinon.stub(),
+        }
+      };
+
+      // We need to re-stub these methods for each test in this suite
+      // because they are stubbed with `callsThrough` and we need a clean state.
+      if (ZoteroCitationCounts._injectXULElement.restore) ZoteroCitationCounts._injectXULElement.restore();
+      if (ZoteroCitationCounts._createToolsMenu.restore) ZoteroCitationCounts._createToolsMenu.restore();
+      if (ZoteroCitationCounts._createItemMenu.restore) ZoteroCitationCounts._createItemMenu.restore();
+      sinon.stub(ZoteroCitationCounts, '_injectXULElement').callThrough();
+      sinon.stub(ZoteroCitationCounts, '_createToolsMenu').callThrough();
+      sinon.stub(ZoteroCitationCounts, '_createItemMenu').callThrough();
+    });
+
+    describe('_storeAddedElement', function() {
+      it('should add element id to _addedElementIDs', function() {
+        ZoteroCitationCounts._storeAddedElement({ id: 'test-id' });
+        expect(ZoteroCitationCounts._addedElementIDs).to.deep.equal(['test-id']);
+      });
+
+      it('should throw an error if element has no id', function() {
+        expect(() => ZoteroCitationCounts._storeAddedElement({})).to.throw('Element must have an id.');
+      });
+    });
+
+    describe('_injectXULElement', function() {
+      it('should create, configure, and append the element', function() {
+        const listeners = { command: () => {} };
+        const attributes = { label: 'Test', value: 'test-value', disabled: true, nullable: null };
+        ZoteroCitationCounts._injectXULElement(mockDocument, 'menuitem', 'test-elem-id', attributes, 'parent-id', listeners);
+
+        expect(mockDocument.createXULElement.calledOnceWith('menuitem')).to.be.true;
+        expect(mockElement.id).to.equal('test-elem-id');
+        expect(mockElement.setAttribute.calledWith('label', 'Test')).to.be.true;
+        expect(mockElement.setAttribute.calledWith('value', 'test-value')).to.be.true;
+        expect(mockElement.setAttribute.calledWith('disabled', true)).to.be.true;
+        expect(mockElement.setAttribute.callCount).to.equal(3); // null value is filtered
+        expect(mockElement.addEventListener.calledOnceWith('command')).to.be.true;
+        expect(mockDocument.getElementById.calledOnceWith('parent-id')).to.be.true;
+        expect(mockElement.appendChild.calledOnceWith(mockElement)).to.be.true; // Parent appends child
+        expect(ZoteroCitationCounts._addedElementIDs).to.deep.equal(['test-elem-id']);
+      });
+    });
+
+    describe('_createToolsMenu', function() {
+      it('should inject menu, menupopup, and menuitems for each API', function() {
+        // Init APIs for the test
+        ZoteroCitationCounts.init({ id: 'test', version: '1.0', rootURI: '' });
+        const apiCount = ZoteroCitationCounts.APIs.length;
+
+        ZoteroCitationCounts._createToolsMenu(mockDocument);
+
+        // Menu, Menupopup, N APIs + "none"
+        expect(ZoteroCitationCounts._injectXULElement.callCount).to.equal(2 + apiCount + 1);
+        // Check main menu
+        expect(ZoteroCitationCounts._injectXULElement.getCall(0).args[1]).to.equal('menu');
+        // Check menupopup
+        expect(ZoteroCitationCounts._injectXULElement.getCall(1).args[1]).to.equal('menupopup');
+        // Check a menuitem
+        expect(ZoteroCitationCounts._injectXULElement.getCall(2).args[1]).to.equal('menuitem');
+        expect(ZoteroCitationCounts._injectXULElement.getCall(2).args[2]).to.include('crossref');
+      });
+    });
+
+    describe('_createItemMenu', function() {
+      it('should inject menu, menupopup, and menuitems for each API', function() {
+        ZoteroCitationCounts.init({ id: 'test', version: '1.0', rootURI: '' });
+        const apiCount = ZoteroCitationCounts.APIs.length;
+
+        ZoteroCitationCounts._createItemMenu(mockDocument);
+
+        // Menu, Menupopup, N APIs
+        expect(ZoteroCitationCounts._injectXULElement.callCount).to.equal(2 + apiCount);
+        expect(ZoteroCitationCounts._injectXULElement.getCall(0).args[1]).to.equal('menu');
+        expect(ZoteroCitationCounts._injectXULElement.getCall(1).args[1]).to.equal('menupopup');
+        expect(ZoteroCitationCounts._injectXULElement.getCall(2).args[1]).to.equal('menuitem');
+      });
+    });
+
+    describe('addToWindow', function() {
+      it('should add FTL, tools menu, and item menu', function() {
+        ZoteroCitationCounts.addToWindow(mockWindow);
+        expect(mockWindow.MozXULElement.insertFTLIfNeeded.calledOnceWith('citation-counts.ftl')).to.be.true;
+        expect(ZoteroCitationCounts._createToolsMenu.calledOnceWith(mockDocument)).to.be.true;
+        expect(ZoteroCitationCounts._createItemMenu.calledOnceWith(mockDocument)).to.be.true;
+      });
+    });
+
+    describe('removeFromWindow', function() {
+      it('should remove all added elements and the FTL file', function() {
+        ZoteroCitationCounts._addedElementIDs = ['id1', 'id2'];
+        const mockElem1 = { remove: sinon.stub() };
+        const mockElem2 = { remove: sinon.stub() };
+        const mockFtl = { remove: sinon.stub() };
+        mockDocument.getElementById.withArgs('id1').returns(mockElem1);
+        mockDocument.getElementById.withArgs('id2').returns(mockElem2);
+        mockDocument.querySelector.withArgs('[href="citation-counts.ftl"]').returns(mockFtl);
+
+        ZoteroCitationCounts.removeFromWindow(mockWindow);
+
+        expect(mockElem1.remove.calledOnce).to.be.true;
+        expect(mockElem2.remove.calledOnce).to.be.true;
+        expect(mockFtl.remove.calledOnce).to.be.true;
+        expect(ZoteroCitationCounts._addedElementIDs).to.be.empty;
+      });
+    });
+
+    describe('addToAllWindows', function() {
+      it('should call addToWindow for each Zotero window', function() {
+        const mockWin1 = { ZoteroPane: {} };
+        const mockWin2 = { ZoteroPane: {} };
+        const mockWin3 = {}; // No ZoteroPane, should be skipped
+        global.Zotero.getMainWindows.returns([mockWin1, mockWin2, mockWin3]);
+        sinon.stub(ZoteroCitationCounts, 'addToWindow');
+
+        ZoteroCitationCounts.addToAllWindows();
+
+        expect(ZoteroCitationCounts.addToWindow.calledTwice).to.be.true;
+        expect(ZoteroCitationCounts.addToWindow.calledWith(mockWin1)).to.be.true;
+        expect(ZoteroCitationCounts.addToWindow.calledWith(mockWin2)).to.be.true;
+      });
+    });
+
+    describe('removeFromAllWindows', function() {
+      it('should call removeFromWindow for each Zotero window', function() {
+        const mockWin1 = { ZoteroPane: {} };
+        const mockWin2 = { ZoteroPane: {} };
+        const mockWin3 = {}; // No ZoteroPane, should be skipped
+        global.Zotero.getMainWindows.returns([mockWin1, mockWin2, mockWin3]);
+        sinon.stub(ZoteroCitationCounts, 'removeFromWindow');
+
+        ZoteroCitationCounts.removeFromAllWindows();
+
+        expect(ZoteroCitationCounts.removeFromWindow.calledTwice).to.be.true;
+        expect(ZoteroCitationCounts.removeFromWindow.calledWith(mockWin1)).to.be.true;
+        expect(ZoteroCitationCounts.removeFromWindow.calledWith(mockWin2)).to.be.true;
+      });
+    });
+  });
+  describe('_log', function() {
+    beforeEach(function() {
+      // Reset history of stubs that might be used elsewhere
+      if(global.Zotero.debug.resetHistory) global.Zotero.debug.resetHistory();
+    });
+
+    it('should call Zotero.debug', function() {
+      global.ZoteroCitationCounts._log('test message');
+      expect(global.Zotero.debug.calledWith('Zotero Citation Counts: test message')).to.be.true;
+    });
+
+    it('should call Zotero.Plugins.Utilities.log if available', function() {
+      global.Zotero.Plugins = {
+        Utilities: {
+          log: sinon.stub()
+        }
+      };
+      global.ZoteroCitationCounts._log('test message');
+      expect(global.Zotero.Plugins.Utilities.log.calledOnce).to.be.true;
+      delete global.Zotero.Plugins;
+    });
+  });
+
+  describe('updateItems', function() {
+    let mockItems, mockApi, mockProgressWindow, mockPwItem;
+
+    beforeEach(function() {
+        mockItems = [{ isFeedItem: false, getField: sinon.stub().returns('Test Title') }];
+        mockApi = { name: 'TestAPI', useDoi: true, methods: {} };
+
+        mockPwItem = {
+            setIcon: sinon.stub(),
+            setProgress: sinon.stub(),
+            setError: sinon.stub(),
+        };
+        mockProgressWindow = {
+            show: sinon.stub(),
+            changeHeadline: sinon.stub(),
+            ItemProgress: sinon.stub().returns(mockPwItem),
+            startCloseTimer: sinon.stub(),
+        };
+        global.Zotero.ProgressWindow.returns(mockProgressWindow);
+
+        if (global.ZoteroCitationCounts._retrieveCitationCount.restore) {
+          global.ZoteroCitationCounts._retrieveCitationCount.restore();
+        }
+        if (global.ZoteroCitationCounts._setCitationCount.restore) {
+          global.ZoteroCitationCounts._setCitationCount.restore();
+        }
+        sinon.stub(global.ZoteroCitationCounts, '_retrieveCitationCount').resolves([42, 'TestAPI/DOI']);
+        sinon.stub(global.ZoteroCitationCounts, '_setCitationCount');
+    });
+
+    it('should do nothing for empty or feed items', async function() {
+        await global.ZoteroCitationCounts.updateItems([], mockApi);
+        await global.ZoteroCitationCounts.updateItems([{ isFeedItem: true }], mockApi);
+        expect(mockProgressWindow.show.notCalled).to.be.true;
+    });
+
+    it('should show progress window and update items on success', async function() {
+        await global.ZoteroCitationCounts.updateItems(mockItems, mockApi);
+
+        expect(mockProgressWindow.show.calledOnce).to.be.true;
+        expect(mockProgressWindow.changeHeadline.called).to.be.true;
+        expect(global.ZoteroCitationCounts._retrieveCitationCount.calledOnce).to.be.true;
+        expect(global.ZoteroCitationCounts._setCitationCount.calledOnceWith(mockItems[0], 'TestAPI/DOI', 42)).to.be.true;
+        expect(mockPwItem.setIcon.calledWith(sinon.match(/tick/))).to.be.true;
+        expect(mockPwItem.setProgress.calledWith(100)).to.be.true;
+        expect(mockProgressWindow.startCloseTimer.calledOnce).to.be.true;
+    });
+
+    it('should handle l10n returning null for error message', async function() {
+        global.ZoteroCitationCounts._retrieveCitationCount.rejects(new Error('some-error-key'));
+        // Make the first formatValue (for the specific error) return null
+        global.ZoteroCitationCounts.l10n.formatValue
+            .withArgs('some-error-key', { api: 'TestAPI' }).resolves(null)
+            .withArgs('citationcounts-progresswindow-error-unknown').resolves('Fallback error message');
+
+        await global.ZoteroCitationCounts.updateItems(mockItems, mockApi);
+
+        expect(mockPwItem.setError.calledOnce).to.be.true;
+        // Check that a new ItemProgress was created with the fallback message
+        expect(mockProgressWindow.ItemProgress.calledWith(
+            sinon.match.any,
+            'Fallback error message',
+            mockPwItem
+        )).to.be.true;
     });
   });
 });
