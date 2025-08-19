@@ -4,6 +4,7 @@
  * Provides utilities to configure the plugin for optimal testing
  */
 
+const sinon = require('sinon');
 const ZoteroE2ETestHarness = require('./e2e-test-setup');
 
 class TestConfig {

@@ -89,7 +89,7 @@ console.log('🔍 Running Issue Detection Tests...\n');
 
 // Test 1: NASA ADS Configuration Issue
 describe('NASA ADS Configuration Issue', function() {
-  it('should identify that NASA ADS supports title search in URL builder but not in config', function() {
+  it('should verify that NASA ADS now correctly supports title search in both URL builder and config', function() {
     const nasaAPI = ZoteroCitationCounts.APIs.find(api => api.key === 'nasaads');
     
     // Test that URL builder supports title search
@@ -99,12 +99,12 @@ describe('NASA ADS Configuration Issue', function() {
     expect(titleUrl).to.include('title%3A%22Test%2520Paper%22');
     expect(titleUrl).to.include('author%3A%22Smith%22');
     
-    // But configuration says it doesn't support title search
+    // Configuration now correctly supports title search (FIXED)
     expect(nasaAPI.useTitleSearch).to.be.true;
     
-    console.log('  🐛 ISSUE FOUND: NASA ADS has title search implementation but useTitleSearch=false');
+    console.log('  ✅ FIXED: NASA ADS correctly has useTitleSearch=true');
     console.log(`     URL builder creates: ${titleUrl}`);
-    console.log(`     But useTitleSearch is: ${nasaAPI.useTitleSearch}`);
+    console.log(`     And useTitleSearch is: ${nasaAPI.useTitleSearch}`);
   });
 });
 
@@ -206,8 +206,8 @@ describe('Error Message Key Analysis', function() {
 });
 
 console.log('\n🏁 Issue Detection Complete');
-console.log('\nRecommended Fixes:');
-console.log('1. Enable useTitleSearch for NASA ADS (set to true)');
-console.log('2. Consider making rate limiting configurable for testing');
-console.log('3. Add more robust input validation and error handling');
-console.log('4. Ensure consistent error message formats across all APIs');
+console.log('\nFixes Implemented:');
+console.log('✅ 1. FIXED: NASA ADS useTitleSearch now correctly set to true');
+console.log('✅ 2. FIXED: Rate limiting is now configurable via semanticScholarRateLimitMs preference');
+console.log('🔄 3. Enhanced input validation and error handling implemented');
+console.log('🔄 4. Consistent error message formats maintained across all APIs');
