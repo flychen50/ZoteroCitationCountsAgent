@@ -81,7 +81,7 @@ ZoteroCitationCounts = {
         name: "NASA ADS",
         useDoi: true,
         useArxiv: true,
-        useTitleSearch: false,
+        useTitleSearch: true,
         methods: {
           urlBuilder: this._nasaadsUrl,
           responseCallback: this._nasaadsCallback.bind(this),
@@ -982,7 +982,11 @@ ZoteroCitationCounts = {
 
     // throttle Semantic Scholar so we don't reach limit.
     // This needs to be done before any return, regardless of path.
-    await new Promise((r) => setTimeout(r, 3000));
+    // Allow rate limiting to be disabled for testing
+    const rateLimitDelay = this.getPref('semanticScholarRateLimitMs') || 3000;
+    if (rateLimitDelay > 0) {
+      await new Promise((r) => setTimeout(r, rateLimitDelay));
+    }
 
     if (response.data) {
       // Handle search results

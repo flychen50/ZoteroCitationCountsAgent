@@ -700,6 +700,8 @@ describe('ZoteroCitationCounts', function() {
 
     beforeEach(function() {
       global.ZoteroCitationCounts._log = sinon.stub();
+      // Mock the preference to return 3000ms for consistent test behavior
+      mockZoteroPrefsGet.withArgs('extensions.citationcounts.semanticScholarRateLimitMs', true).returns(3000);
       // Mock setTimeout to avoid 3 second delay
       clock = sinon.useFakeTimers();
     });
