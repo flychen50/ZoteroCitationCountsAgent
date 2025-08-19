@@ -22,7 +22,7 @@ describe('E2E: Issue Detection and Code Quality', function() {
   });
 
   describe('Configuration Inconsistencies', function() {
-    it('ISSUE 1: NASA ADS should support title search but useTitleSearch is false', function() {
+    it('ISSUE 1 FIXED: NASA ADS now correctly supports title search', function() {
       const nasaAPI = global.ZoteroCitationCounts.APIs.find(api => api.key === 'nasaads');
       
       // NASA ADS URL function supports title_author_year type
@@ -33,14 +33,14 @@ describe('E2E: Issue Detection and Code Quality', function() {
       expect(titleUrl).to.include('title%3A%22Test');
       expect(titleUrl).to.include('author%3A%22Smith');
       
-      // But configuration says it doesn't support title search!
-      expect(nasaAPI.useTitleSearch).to.be.false; // This is the BUG
+      // Configuration now correctly enables title search
+      expect(nasaAPI.useTitleSearch).to.be.true; // FIXED
       
-      // This means title search will never be attempted for NASA ADS
-      // even though the infrastructure is there
+      // This means title search will now be attempted for NASA ADS
+      // when DOI/arXiv are not available
     });
 
-    it('ISSUE 1 IMPACT: NASA ADS never tries title search for items without DOI/arXiv', async function() {
+    it('ISSUE 1 FIXED: NASA ADS now successfully tries title search for items without DOI/arXiv', async function() {
       harness.setPreference('nasaadsApiKey', 'test-key');
       
       // Mock NASA ADS to succeed for title search  
@@ -63,18 +63,18 @@ describe('E2E: Issue Detection and Code Quality', function() {
       const nasaAPI = global.ZoteroCitationCounts.APIs.find(api => api.key === 'nasaads');
       await global.ZoteroCitationCounts.updateItems([testItem], nasaAPI);
 
-      // Should have failed because title search is disabled
+      // Should now succeed because title search is enabled
       const progressWindow = harness.getLastProgressWindow();
-      const errorMessage = progressWindow.itemProgresses[1];
-      expect(errorMessage.text).to.include('no-doi-or-arxiv');
+      const itemProgress = progressWindow.itemProgresses[0];
+      expect(itemProgress.progress).to.equal(100);
       
-      // Title search URL was never even attempted
-      expect(harness.fetchStub.calledWith(sinon.match(/title/))).to.be.false;
+      // Title search URL was attempted and succeeded
+      expect(harness.fetchStub.calledWith(sinon.match(/title/))).to.be.true;
     });
   });
 
   describe('Race Conditions and Timing Issues', function() {
-    it('ISSUE 2: Semantic Scholar rate limiting uses setTimeout which could cause race conditions in tests', async function() {
+    it('ISSUE 2 FIXED: Semantic Scholar rate limiting is now configurable to avoid test race conditions', async function() {
       const testItem = harness.createMockItem({
         title: 'Rate Limit Test',
         DOI: '10.1000/rate-test'
@@ -93,11 +93,11 @@ describe('E2E: Issue Detection and Code Quality', function() {
       await global.ZoteroCitationCounts.updateItems([testItem], semanticAPI);
       const duration = Date.now() - startTime;
 
-      // Should take at least 3 seconds due to rate limiting
+      // Should take at least 3 seconds due to rate limiting (if not configured to 0)
       expect(duration).to.be.at.least(2900); // Allow some variance
       
-      // This works, but in real testing environments this could be problematic
-      // Better would be to make rate limiting configurable or mockable
+      // FIXED: Rate limiting is now configurable via semanticScholarRateLimitMs preference
+      // Tests can set this to 0 for fast testing or keep default 3000ms for realistic testing
     });
   });
 
