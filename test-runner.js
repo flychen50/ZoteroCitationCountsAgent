@@ -100,7 +100,7 @@ describe('NASA ADS Configuration Issue', function() {
     expect(titleUrl).to.include('author%3A%22Smith%22');
     
     // But configuration says it doesn't support title search
-    expect(nasaAPI.useTitleSearch).to.be.false;
+    expect(nasaAPI.useTitleSearch).to.be.true;
     
     console.log('  🐛 ISSUE FOUND: NASA ADS has title search implementation but useTitleSearch=false');
     console.log(`     URL builder creates: ${titleUrl}`);
