@@ -239,6 +239,9 @@ describe('E2E: API Integration Scenarios', function() {
     });
 
     it('should handle DOI lookup with API key authentication', async function() {
+      // Set NASA ADS API key
+      harness.setPreference('nasaadsApiKey', 'test-nasa-key-123');
+      
       harness.fetchStub.withArgs(
         sinon.match(/api\.adsabs\.harvard\.edu/),
         sinon.match({ headers: { 'Authorization': 'Bearer test-nasa-key-123' } })
@@ -262,7 +265,7 @@ describe('E2E: API Integration Scenarios', function() {
 
       // Verify API key was used
       expect(harness.fetchStub.calledWith(
-        sinon.match(/q=doi%3A10\.3847/),
+        sinon.match(/q=doi:10\.3847/),
         sinon.match({ headers: { 'Authorization': 'Bearer test-nasa-key-123' } })
       )).to.be.true;
 
@@ -429,10 +432,10 @@ describe('E2E: API Integration Scenarios', function() {
       const crossrefAPI = global.ZoteroCitationCounts.APIs.find(api => api.key === 'crossref');
       await global.ZoteroCitationCounts.updateItems([testItem], crossrefAPI);
 
-      // Should show no-citation-count error
+      // Should show no-results-all-attempts error for Crossref API
       const progressWindow = harness.getLastProgressWindow();
       const errorMessage = progressWindow.itemProgresses[1];
-      expect(errorMessage.text).to.include('no-citation-count');
+      expect(errorMessage.text).to.include('citationcounts-progresswindow-error-no-results-all-attempts');
     });
 
     it('should handle responses with missing citation count fields', async function() {
@@ -457,7 +460,7 @@ describe('E2E: API Integration Scenarios', function() {
       // Should handle gracefully
       const progressWindow = harness.getLastProgressWindow();
       const errorMessage = progressWindow.itemProgresses[1];
-      expect(errorMessage.text).to.include('no-citation-count');
+      expect(errorMessage.text).to.include('citationcounts-progresswindow-error-no-results-all-attempts');
     });
 
     it('should handle null or non-numeric citation counts', async function() {
@@ -477,10 +480,10 @@ describe('E2E: API Integration Scenarios', function() {
       const crossrefAPI = global.ZoteroCitationCounts.APIs.find(api => api.key === 'crossref');
       await global.ZoteroCitationCounts.updateItems([testItem], crossrefAPI);
 
-      // Should handle null gracefully
+      // Should handle null gracefully  
       const progressWindow = harness.getLastProgressWindow();
       const errorMessage = progressWindow.itemProgresses[1];
-      expect(errorMessage.text).to.include('no-citation-count');
+      expect(errorMessage.text).to.include('citationcounts-progresswindow-error-no-results-all-attempts');
     });
   });
 

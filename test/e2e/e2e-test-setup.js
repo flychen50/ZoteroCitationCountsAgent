@@ -55,7 +55,14 @@ class ZoteroE2ETestHarness {
 
     // Mock Localization API
     global.Localization = sinon.stub().returns({
-      formatValue: sinon.stub().resolvesArg(0)
+      formatValue: sinon.stub().callsFake((key, params) => {
+        // Simple mock that handles common localization keys
+        const templates = {
+          'citationcounts-progresswindow-headline': `Getting ${params?.api} citation counts.`,
+          'citationcounts-progresswindow-finished-headline': `Finished getting ${params?.api} citation counts.`,
+        };
+        return Promise.resolve(templates[key] || key);
+      })
     });
 
     // Mock fetch for API calls
@@ -123,6 +130,11 @@ class ZoteroE2ETestHarness {
           addEventListener: sinon.stub(),
           setAttribute: sinon.stub().callsFake((key, value) => {
             element.attributes.set(key, value);
+            // Update id property and elements map when id is set
+            if (key === 'id') {
+              element.id = value;
+              elements.set(value, element);
+            }
           }),
           getAttribute: sinon.stub().callsFake((key) => {
             return element.attributes.get(key);
@@ -130,6 +142,10 @@ class ZoteroE2ETestHarness {
           appendChild: sinon.stub().callsFake((child) => {
             element.children.push(child);
             child.parent = element;
+            // Register child in elements map if it has an id
+            if (child.id) {
+              elements.set(child.id, child);
+            }
           }),
           remove: sinon.stub().callsFake(() => {
             if (element.parent) {
@@ -153,12 +169,10 @@ class ZoteroE2ETestHarness {
 
     // Add standard Zotero menu elements
     const toolsPopup = mockDocument.createXULElement('menupopup');
-    toolsPopup.id = 'menu_ToolsPopup';
-    elements.set('menu_ToolsPopup', toolsPopup);
+    toolsPopup.setAttribute('id', 'menu_ToolsPopup');
 
     const itemMenu = mockDocument.createXULElement('menupopup');
-    itemMenu.id = 'zotero-itemmenu';
-    elements.set('zotero-itemmenu', itemMenu);
+    itemMenu.setAttribute('id', 'zotero-itemmenu');
 
     return mockDocument;
   }
@@ -226,8 +240,11 @@ class ZoteroE2ETestHarness {
         mockItem.fields.set(field, value);
       }),
       saveTx: sinon.stub().returns(Promise.resolve()),
-      getCreators: sinon.stub().returns(mockItem.creators)
+      getCreators: sinon.stub()
     };
+    
+    // Set up getCreators after the object is created to avoid circular reference
+    mockItem.getCreators.returns(mockItem.creators);
 
     // Set default fields
     mockItem.fields.set('title', properties.title || 'Test Article Title');

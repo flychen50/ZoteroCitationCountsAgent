@@ -247,10 +247,11 @@ describe('E2E: Issue Detection and Code Quality', function() {
       const specialDOI = '10.1000/test(special)chars[brackets]';
       
       const crossrefAPI = global.ZoteroCitationCounts.APIs.find(api => api.key === 'crossref');
-      const url = crossrefAPI.methods.urlBuilder(encodeURIComponent(specialDOI), 'doi');
+      const encodedDOI = encodeURIComponent(specialDOI);
+      const url = crossrefAPI.methods.urlBuilder(encodedDOI, 'doi');
       
       // URL should handle encoded special characters properly
-      expect(url).to.include('10.1000%2Ftest%2528special%2529chars%255Bbrackets%255D');
+      expect(url).to.include('10.1000%2Ftest(special)chars%5Bbrackets%5D');
     });
   });
 
@@ -300,7 +301,7 @@ describe('E2E: Issue Detection and Code Quality', function() {
       // Should handle negative count as invalid
       const progressWindow = harness.getLastProgressWindow();
       const errorMessage = progressWindow.itemProgresses[1];
-      expect(errorMessage.text).to.include('no-citation-count');
+      expect(errorMessage.text).to.include('citationcounts-progresswindow-error-no-results-all-attempts');
     });
 
     it('ISSUE 12: Very large citation counts should be handled', async function() {

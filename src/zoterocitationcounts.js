@@ -152,7 +152,13 @@ ZoteroCitationCounts = {
       element.addEventListener(eventType, listener);
     });
 
-    document.getElementById(parentID).appendChild(element);
+    const parentElement = document.getElementById(parentID);
+    if (parentElement) {
+      parentElement.appendChild(element);
+    } else {
+      this._log(`[Warning] Parent element '${parentID}' not found. Element created but not appended.`);
+    }
+    
     this._storeAddedElement(element);
 
     return element;

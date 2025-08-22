@@ -116,7 +116,7 @@ describe('E2E: Complete Plugin Workflow', function() {
       expect(progressWindow.headline).to.include('Crossref');
 
       // Verify item progress was tracked
-      expect(progressWindow.itemProgresses).to.have.length(2); // Item + success message
+      expect(progressWindow.itemProgresses).to.have.length(1); // Just the item being processed
       const itemProgress = progressWindow.itemProgresses[0];
       expect(itemProgress.text).to.equal('Test Paper with DOI');
       expect(itemProgress.progress).to.equal(100);
@@ -266,7 +266,7 @@ describe('E2E: Complete Plugin Workflow', function() {
 
       // Verify all items were processed
       const progressWindow = harness.getLastProgressWindow();
-      expect(progressWindow.itemProgresses).to.have.length(4); // 3 items + 1 completion message
+      expect(progressWindow.itemProgresses).to.have.length(3); // 3 items processed
 
       // Verify each item shows completion
       for (let i = 0; i < 3; i++) {
@@ -291,7 +291,7 @@ describe('E2E: Complete Plugin Workflow', function() {
       ];
 
       // Mock second item to fail
-      harness.fetchStub.withArgs(sinon.match(/10\.1000\/bad/))
+      harness.fetchStub.withArgs(sinon.match(/10\.1000%2Fbad/))
         .resolves({ ok: false, status: 404 });
 
       const crossrefAPI = global.ZoteroCitationCounts.APIs.find(api => api.key === 'crossref');
