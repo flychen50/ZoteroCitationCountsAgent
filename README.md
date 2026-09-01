@@ -1,10 +1,12 @@
+
+
 # Zotero 7 Citation Counts Manager Enhanced
 
 - [GitHub](https://github.com/flychen50/ZoteroCitationCountsAgent): Source
   code repository
 - ![Integration Tests](https://github.com/flychen50/ZoteroCitationCountsAgent/actions/workflows/integration-tests.yml/badge.svg)
 
-This is an add-on for [Zotero](https://www.zotero.org), a research source management tool. The add-on can auto-fetch citation counts for journal articles using various APIs, including [Crossref](https://www.crossref.org), [INSPIRE-HEP](https://inspirehep.net), and [Semantic Scholar](https://www.semanticscholar.org). [Google Scholar](https://scholar.google.com) is not supported because automated access is against its terms of service.
+This is an add-on for [Zotero](https://www.zotero.org), a research source management tool. The add-on can auto-fetch citation counts for journal articles using various APIs, including [Crossref](https://www.crossref.org), [INSPIRE-HEP](https://inspirehep.net), [Semantic Scholar](https://www.semanticscholar.org), and [NASA ADS](https://ui.adsabs.harvard.edu). [Google Scholar](https://scholar.google.com) is not supported because automated access is against its terms of service.
 
 Please report any bugs, questions, or feature requests in the Github repository.
 
